@@ -40,7 +40,7 @@ kill switch, development authentication, HTTP origins, a local database or missi
 2. Run `alembic upgrade head` against Neon and execute `tools/seed_demo.py`.
 3. Deploy `render.yaml` as a Render Blueprint; enter every `sync: false` value in the dashboard.
 4. Verify the Render URL `/live`, `/ready`, protected `/metrics`, OAuth login redirect and 401 data.
-5. Deploy the root Vercel project using `vercel.json`, with:
+5. Deploy `apps/web` as the Vercel project root using `apps/web/vercel.json`, with:
    - `NEXT_PUBLIC_API_URL=https://api.deb2b.id.vn`
    - `NEXT_PUBLIC_DEV_AUTH_ENABLED=false`
 6. Add the custom domains in each provider before changing DNS.

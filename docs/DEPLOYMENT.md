@@ -1,7 +1,7 @@
 # Deployment guide
 
 For the zero-cost, synthetic, fail-closed portfolio release, use `PORTFOLIO_DEPLOYMENT.md` and
-`render.yaml`/`vercel.json`. The guide below remains the gate for a full production/pilot release.
+`render.yaml`/`apps/web/vercel.json`. The guide below remains the gate for a full production/pilot release.
 
 This guide is executable only after `RELEASE_CHECKLIST.md` has no open P0/P1 item. Current status is
 NO-GO, so the Railway configuration has been prepared but not applied.
