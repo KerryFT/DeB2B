@@ -1,18 +1,18 @@
 # Production readiness report
 
 > **Portfolio addendum — 2026-08-25:** The full production verdict below remains `NO-GO`.
-> A separately constrained release at `app.deb2b.id.vn` is now `CONDITIONAL GO` pending live
-> Vercel/Render/DNS/OAuth verification. Its closed scope and P1 dispositions are documented in
+> A separately constrained release at `app.deb2b.id.vn` is now live with `CONDITIONAL GO` after
+> Vercel/Render/DNS/TLS and OAuth-redirect verification. Its closed scope and P1 dispositions are documented in
 > `PORTFOLIO_DEPLOYMENT.md`. This is not a reclassification of the full product as production-ready.
 
 **Audit date:** 2026-08-24 (Asia/Bangkok)
-**Repository release:** `8fd75adbc7512fa045b7e2a9fa259e72976d34e9` plus the remediation in this worktree
+**Repository release:** `44be1be` for the live constrained portfolio; full production remains blocked
 **Target:** `https://deb2b.id.vn`
 **Verdict before remediation:** **NO-GO**
 **Verdict after remediation:** **NO-GO for public production; internal staging only after OIDC is configured**
 
-No production deployment or DNS change was made. A successful build is not sufficient while the
-remaining P1 findings below are open.
+No full production deployment or apex DNS change was made. The constrained portfolio uses only
+`app` and `api` subdomains. A successful portfolio deployment does not close the full-production P1 findings below.
 
 ## Evidence summary
 

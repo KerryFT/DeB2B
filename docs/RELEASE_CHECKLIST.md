@@ -4,6 +4,15 @@ The full production checklist remains blocked. The constrained portfolio release
 scope and P1 closure matrix in `PORTFOLIO_DEPLOYMENT.md`; do not use its conditional approval for
 real customer data, background automation, webhooks, uploads or external sends.
 
+## Constrained portfolio live gate — 2026-08-25
+
+- [x] Release `44be1be` pushed and deployed to Vercel Hobby and Render Free.
+- [x] Neon is at migration head and contains reproducible synthetic seed data.
+- [x] Public DNS, HTTPS, HSTS/CSP, health, auth boundary and credentialed CORS checks pass.
+- [x] Microsoft redirect uses the production callback, `Mail.ReadWrite`, and no `Mail.Send`.
+- [x] Frontend lockfile audit reports zero vulnerabilities; lint, typecheck, test and build pass.
+- [ ] Owner UAT completes Microsoft consent/login, Outlook sync, allowlisted draft and synthetic MISA import.
+
 Current gate: **NO-GO**. Checked items have local evidence; unchecked P0/P1 items block public launch.
 
 ## Code and data

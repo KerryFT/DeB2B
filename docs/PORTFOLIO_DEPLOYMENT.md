@@ -6,6 +6,22 @@
 remains `NO-GO`. The portfolio release stores synthetic/anonymized data only and deliberately
 removes document upload/OCR, Temporal timers, MISA API/write-back, Outlook webhooks and email send.
 
+## Live deployment evidence — 2026-08-25
+
+- Release: `44be1be` on `v1-v2-implementation`.
+- Frontend: `https://app.deb2b.id.vn` on Vercel Hobby; HTTPS 200 with HSTS and CSP.
+- API: `https://api.deb2b.id.vn` on Render Free in Singapore; `/live` and `/ready` return 200.
+- DNS: both CNAMEs resolve correctly through Cloudflare and Google public resolvers with TTL 60.
+- Boundary checks: anonymous `/metrics` is 404 and anonymous business data is 401.
+- Browser checks: credentialed CORS allows only `https://app.deb2b.id.vn`.
+- Microsoft authorization redirects to `login.microsoftonline.com` with the production callback,
+  `Mail.ReadWrite`, and no `Mail.Send` permission.
+- Frontend install uses an app-local lockfile and `npm ci`; npm audit reports zero vulnerabilities.
+
+The remaining acceptance step is interactive owner UAT: complete Microsoft consent/login, run one
+manual Outlook sync, create one allowlisted draft, and import one synthetic MISA file. No automated
+test can complete account consent on behalf of the owner.
+
 ## Topology and cost boundary
 
 - `deb2b.id.vn`: existing WordPress; unchanged.
@@ -38,7 +54,8 @@ kill switch, development authentication, HTTP origins, a local database or missi
 
 1. Run `ruff`, strict `mypy`, Python tests, frontend lint/typecheck/test/build and Docker builds.
 2. Run `alembic upgrade head` against Neon and execute `tools/seed_demo.py`.
-3. Deploy `render.yaml` as a Render Blueprint; enter every `sync: false` value in the dashboard.
+3. Validate `render.yaml`, then create the equivalent Render service through the authenticated API;
+   transmit secret values directly from the ignored `.env` without printing or committing them.
 4. Verify the Render URL `/live`, `/ready`, protected `/metrics`, OAuth login redirect and 401 data.
 5. Deploy `apps/web` as the Vercel project root using `apps/web/vercel.json`, with:
    - `NEXT_PUBLIC_API_URL=https://api.deb2b.id.vn`
