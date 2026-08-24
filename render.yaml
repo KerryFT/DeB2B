@@ -19,7 +19,7 @@ services:
       - key: CORS_ALLOWED_ORIGINS
         value: https://app.deb2b.id.vn
       - key: TRUSTED_HOSTS
-        value: api.deb2b.id.vn
+        value: api.deb2b.id.vn,deb2b-api.onrender.com
       - key: DEV_AUTH_ENABLED
         value: "false"
       - key: DOCUMENT_UPLOAD_ENABLED
