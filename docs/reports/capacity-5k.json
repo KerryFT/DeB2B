@@ -1,0 +1,8 @@
+{
+  "monthly_cases": 5000,
+  "average_daily_cases": 166.67,
+  "peak_hour_cases": 42,
+  "required_workers_at_30s": 1,
+  "deployment_floor_workers": 2,
+  "fallback": "Backpressure to failure_records and manual review; external actions remain idempotent"
+}

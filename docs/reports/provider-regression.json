@@ -1,0 +1,11 @@
+{
+  "mode": "offline-contract",
+  "sample_count": 3,
+  "providers": {
+    "openai": {"schema_success_rate": 1.0, "mean_latency_ms": 0, "estimated_cost_usd": 0.0},
+    "gemini": {"schema_success_rate": 1.0, "mean_latency_ms": 0, "estimated_cost_usd": 0.0},
+    "anthropic": {"schema_success_rate": 1.0, "mean_latency_ms": 0, "estimated_cost_usd": 0.0}
+  },
+  "selected_route": "fake",
+  "note": "Live provider smoke is manual and requires tenant-approved credentials."
+}

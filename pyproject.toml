@@ -1,0 +1,99 @@
+[project]
+name = "ar-operations-agent"
+version = "0.1.0"
+description = "Evidence-first accounts receivable operations agent"
+requires-python = ">=3.12,<3.14"
+dependencies = [
+  "alembic>=1.16,<2",
+  "boto3>=1.40,<2",
+  "cryptography>=45,<47",
+  "fastapi>=0.136,<0.137",
+  "google-api-python-client>=2.179,<3",
+  "google-auth-oauthlib>=1.2,<2",
+  "httpx>=0.28,<0.29",
+  "openpyxl>=3.1,<4",
+  "opentelemetry-api>=1.36,<2",
+  "opentelemetry-sdk>=1.36,<2",
+  "prometheus-client>=0.22,<1",
+  "psycopg[binary]>=3.2,<4",
+  "pydantic>=2.11,<3",
+  "pydantic-settings>=2.10,<3",
+  "pyjwt[crypto]>=2.10,<3",
+  "python-multipart>=0.0.20,<0.1",
+  "sqlalchemy>=2.0.43,<3",
+  "structlog>=25.4,<26",
+  "temporalio>=1.31,<1.32",
+  "uvicorn[standard]>=0.35,<0.36"
+]
+
+[dependency-groups]
+dev = [
+  "mypy>=1.17,<2",
+  "pytest>=8.4,<9",
+  "pytest-asyncio>=1.1,<2",
+  "pytest-cov>=6.2,<7",
+  "ruff>=0.12,<0.13",
+  "testcontainers[postgres]>=4.12,<5"
+]
+documents = [
+  "docling>=2.117,<2.118",
+  "opencv-python==4.10.0.84",
+  "paddlepaddle>=3.3,<3.4",
+  "paddleocr>=3.7,<3.8",
+  "pypdf>=6,<7",
+  "pillow>=11,<12",
+  "torch>=2.6,<3",
+  "torchvision>=0.21,<1"
+]
+llm = [
+  "anthropic>=0.120,<0.121",
+  "google-genai>=2.16,<2.17",
+  "openai>=2.45,<2.46"
+]
+
+[[tool.uv.index]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+explicit = true
+
+[tool.uv.sources]
+torch = { index = "pytorch-cpu" }
+torchvision = { index = "pytorch-cpu" }
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["backend", "services"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+addopts = "-q --strict-markers"
+
+[tool.ruff]
+target-version = "py313"
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "ASYNC", "S"]
+ignore = ["S101"]
+
+[tool.mypy]
+python_version = "3.13"
+strict = true
+plugins = ["pydantic.mypy"]
+
+[[tool.mypy.overrides]]
+module = [
+  "openpyxl",
+  "openpyxl.*",
+  "paddleocr",
+  "paddleocr.*",
+  "PIL",
+  "PIL.*",
+  "pypdf",
+  "pypdf.*"
+]
+ignore_missing_imports = true

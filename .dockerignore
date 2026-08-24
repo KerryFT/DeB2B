@@ -1,0 +1,15 @@
+.git
+.github
+.mypy_cache
+.paddlex
+.ruff_cache
+.tmp
+.uv-cache
+.venv
+**/.next
+**/__pycache__
+node_modules
+data/generated
+pytest-cache-files-*
+*.pyc
+*.log

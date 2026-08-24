@@ -1,0 +1,11 @@
+﻿invoice_number,customer_code,customer_name,tax_id,issue_date,due_date,amount,currency,outstanding_amount,account_owner,status,gold_blocker,has_invoice,has_acceptance,document_data_matches,customer_disputed,promise_due,promise_paid
+INV-2026-0001,CUS-001,Công ty Sao Mai (synthetic),SYN-0000000001,2026-07-02,2026-08-01,173000000,VND,173000000,demo-owner@example.com,OPEN,MISSING_PAYMENT_DOCUMENT,False,True,True,False,False,False
+INV-2026-0002,CUS-002,Công ty An Bình (synthetic),SYN-0000000002,2026-07-03,2026-08-02,234000000,VND,234000000,demo-owner@example.com,OPEN,INCORRECT_DOCUMENT_DATA,True,True,False,False,False,False
+INV-2026-0003,CUS-003,Công ty Minh Hà (synthetic),SYN-0000000003,2026-07-04,2026-08-03,137000000,VND,137000000,demo-owner@example.com,OPEN,MISSING_ACCEPTANCE_OR_DELIVERY_CONFIRMATION,True,False,True,False,False,False
+INV-2026-0004,CUS-004,Công ty Việt Phúc (synthetic),SYN-0000000004,2026-07-05,2026-08-04,204000000,VND,204000000,demo-owner@example.com,OPEN,CUSTOMER_DISPUTE,True,True,True,True,False,False
+INV-2026-0005,CUS-005,Công ty Đông Dương (synthetic),SYN-0000000005,2026-07-06,2026-08-05,45000000,VND,45000000,demo-owner@example.com,OPEN,BROKEN_PROMISE_TO_PAY,True,True,True,False,True,False
+INV-2026-0006,CUS-006,Công ty Thiên Lam (synthetic),SYN-0000000006,2026-07-07,2026-08-06,207000000,VND,207000000,demo-owner@example.com,OPEN,MISSING_PAYMENT_DOCUMENT,False,True,True,False,False,False
+INV-2026-0007,CUS-001,Công ty Sao Mai (synthetic),SYN-0000000007,2026-07-08,2026-08-07,85000000,VND,85000000,demo-owner@example.com,OPEN,INCORRECT_DOCUMENT_DATA,True,True,False,False,False,False
+INV-2026-0008,CUS-002,Công ty An Bình (synthetic),SYN-0000000008,2026-07-09,2026-08-08,24000000,VND,24000000,demo-owner@example.com,OPEN,MISSING_ACCEPTANCE_OR_DELIVERY_CONFIRMATION,True,False,True,False,False,False
+INV-2026-0009,CUS-003,Công ty Minh Hà (synthetic),SYN-0000000009,2026-07-10,2026-08-09,87000000,VND,87000000,demo-owner@example.com,OPEN,CUSTOMER_DISPUTE,True,True,True,True,False,False
+INV-2026-0010,CUS-004,Công ty Việt Phúc (synthetic),SYN-0000000010,2026-07-11,2026-08-10,169000000,VND,169000000,demo-owner@example.com,OPEN,BROKEN_PROMISE_TO_PAY,True,True,True,False,True,False

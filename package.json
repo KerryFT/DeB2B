@@ -1,0 +1,13 @@
+{
+  "name": "ar-operations-agent",
+  "private": true,
+  "packageManager": "pnpm@10.15.0",
+  "engines": { "node": ">=24 <25" },
+  "scripts": {
+    "dev": "pnpm --filter @ar/web dev",
+    "build": "pnpm --filter @ar/web build",
+    "lint": "pnpm --filter @ar/web lint",
+    "typecheck": "pnpm --filter @ar/web typecheck",
+    "test": "pnpm --filter @ar/web test"
+  }
+}

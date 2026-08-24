@@ -1,0 +1,89 @@
+name: ar-operations
+services:
+  postgres:
+    image: postgres:18.6-alpine
+    environment:
+      POSTGRES_USER: ar
+      POSTGRES_PASSWORD: ar
+      POSTGRES_DB: ar
+    ports: ["55432:5432"]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ar"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    volumes: ["postgres18-data:/var/lib/postgresql"]
+  temporal:
+    image: temporalio/auto-setup:1.28.1
+    environment:
+      DB: postgres12
+      DB_PORT: 5432
+      POSTGRES_USER: ar
+      POSTGRES_PWD: ar
+      POSTGRES_SEEDS: postgres
+    ports: ["7233:7233"]
+    depends_on:
+      postgres: { condition: service_healthy }
+  temporal-ui:
+    image: temporalio/ui:2.42.1
+    environment:
+      TEMPORAL_ADDRESS: temporal:7233
+    ports: ["8233:8080"]
+    depends_on: [temporal]
+  minio:
+    image: minio/minio:RELEASE.2025-04-22T22-12-26Z
+    command: server /data --console-address :9001
+    environment:
+      MINIO_ROOT_USER: localdev
+      MINIO_ROOT_PASSWORD: localdev-secret
+    ports: ["9000:9000", "9001:9001"]
+    volumes: ["storage-data:/data"]
+  clamav:
+    image: clamav/clamav:1.4.3
+    ports: ["3310:3310"]
+  document-worker:
+    image: ar-document-worker:dev
+    profiles: ["ocr"]
+    mem_limit: 4g
+    cpus: 2
+    environment:
+      PADDLE_PDX_CACHE_HOME: /app/.cache/paddlex
+    volumes: ["ocr-model-cache:/app/.cache"]
+  api:
+    build:
+      context: .
+      dockerfile: services/api/Dockerfile
+    profiles: ["app"]
+    environment:
+      APP_ENV: development
+      DATABASE_URL: postgresql+psycopg://ar:ar@postgres:5432/ar
+      TEMPORAL_TARGET: temporal:7233
+      DEV_AUTH_ENABLED: "true"
+    ports: ["8000:8000"]
+    depends_on:
+      postgres: { condition: service_healthy }
+      temporal: { condition: service_started }
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/ready')"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+  web:
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+    profiles: ["app"]
+    environment:
+      NEXT_PUBLIC_API_URL: http://localhost:8000
+    ports: ["3000:3000"]
+    depends_on:
+      api: { condition: service_healthy }
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1:3000"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+volumes:
+  postgres18-data:
+  storage-data:
+  ocr-model-cache:

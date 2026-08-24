@@ -1,0 +1,39 @@
+{
+  "dataset_version": "synthetic-v1",
+  "profile": "smoke",
+  "seed": 20260823,
+  "source": "synthetic",
+  "license": "project-generated",
+  "counts": {
+    "invoices": 10,
+    "contracts": 5,
+    "po_acceptance": 10,
+    "threads": 10,
+    "disputes": 5,
+    "promises": 5,
+    "bank": 10
+  },
+  "generator_version": "1.0.0",
+  "artifacts": [
+    {
+      "path": "invoices.csv",
+      "sha256": "514498cd84a9b9fa513573c52838bdfced19289ecc5cf9ac81eb5838dde93175",
+      "bytes": 2257
+    },
+    {
+      "path": "invoices.xlsx",
+      "sha256": "8995c06cb5f185cfdc1c856d58bb3d7e8072e4874a33791f481c8052d5bd03b0",
+      "bytes": 6161
+    },
+    {
+      "path": "bank.csv",
+      "sha256": "c6758e6ebdb5032f52e212038f526380d918e835254bc9ba3bd26f28954ee49e",
+      "bytes": 700
+    },
+    {
+      "path": "cases.jsonl",
+      "sha256": "1baa98e16c8a7f42c52b41b465359b6df4ef6823cb904ffc3f7cf71770705880",
+      "bytes": 5262
+    }
+  ]
+}
