@@ -18,7 +18,12 @@ from backend.application.documents import quarantine_and_store
 from backend.application.imports import ImportPreview, preview_import
 from backend.application.invoice_import_service import ImportResult, upsert_invoice_rows
 from backend.application.mutation import MutationContext, record_mutation
-from backend.application.reconciliation import AllocationSpec, confirm_allocations
+from backend.application.permissions import Permission
+from backend.application.reconciliation import (
+    AllocationSpec,
+    confirm_allocations,
+    reverse_allocation,
+)
 from backend.infrastructure.config import get_settings
 from backend.infrastructure.database import SessionFactory, tenant_session
 from backend.infrastructure.fakes import FakeMalwareScanner, MemoryObjectStorage
@@ -34,7 +39,9 @@ from backend.infrastructure.models import (
     Invoice,
     PaymentCase,
 )
-from services.api.auth import Actor, current_actor, require_roles
+from services.api.auth import Actor, current_actor, require_permission
+from services.api.v1_features import router as v1_features_router
+from services.api.v2_features import router as v2_features_router
 
 logger = structlog.get_logger()
 development_storage = MemoryObjectStorage()
@@ -48,10 +55,12 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     yield
 
 
-app = FastAPI(title=get_settings().app_name, version="0.1.0", lifespan=lifespan)
+app = FastAPI(title=get_settings().app_name, version="1.0.0", lifespan=lifespan)
+app.include_router(v1_features_router)
+app.include_router(v2_features_router)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000"],
+    allow_origins=["http://localhost:3000", "http://127.0.0.1:3000"],
     allow_methods=["GET", "POST", "OPTIONS"],
     allow_headers=[
         "authorization",
@@ -121,7 +130,7 @@ async def me(actor: Annotated[Actor, Depends(current_actor)]) -> dict[str, str]:
 
 @app.post("/api/v1/imports/preview", response_model=ImportPreview)
 async def import_preview(
-    actor: Annotated[Actor, Depends(require_roles("operator", "admin"))],
+    actor: Annotated[Actor, Depends(require_permission(Permission.CASE_EDIT))],
     file: Annotated[UploadFile, File()],
 ) -> ImportPreview:
     del actor
@@ -134,7 +143,7 @@ async def import_preview(
 @app.post("/api/v1/imports/commit", response_model=ImportResult)
 async def import_commit(
     request: Request,
-    actor: Annotated[Actor, Depends(require_roles("operator", "admin"))],
+    actor: Annotated[Actor, Depends(require_permission(Permission.CASE_EDIT))],
     file: Annotated[UploadFile, File()],
 ) -> ImportResult:
     try:
@@ -155,7 +164,7 @@ async def import_commit(
 
 @app.post("/api/v1/documents")
 async def upload_document(
-    actor: Annotated[Actor, Depends(require_roles("operator", "admin"))],
+    actor: Annotated[Actor, Depends(require_permission(Permission.CASE_EDIT))],
     file: Annotated[UploadFile, File()],
     case_id: Annotated[UUID | None, Form()] = None,
 ) -> dict[str, str | bool]:
@@ -205,7 +214,7 @@ async def upload_document(
 
 @app.get("/api/v1/cases")
 async def list_cases(
-    actor: Annotated[Actor, Depends(current_actor)],
+    actor: Annotated[Actor, Depends(require_permission(Permission.CASE_VIEW))],
 ) -> list[dict[str, str | int]]:
     with tenant_session(actor.tenant_id) as session:
         rows = session.execute(
@@ -233,7 +242,7 @@ async def list_cases(
 @app.get("/api/v1/cases/{case_id}")
 async def case_detail(
     case_id: UUID,
-    actor: Annotated[Actor, Depends(current_actor)],
+    actor: Annotated[Actor, Depends(require_permission(Permission.CASE_VIEW))],
 ) -> dict[str, object]:
     with tenant_session(actor.tenant_id) as session:
         case = session.scalar(
@@ -314,7 +323,7 @@ class ApprovalDecision(BaseModel):
 async def approve(
     approval_id: UUID,
     decision: ApprovalDecision,
-    actor: Annotated[Actor, Depends(require_roles("approver", "admin"))],
+    actor: Annotated[Actor, Depends(require_permission(Permission.APPROVAL_SINGLE))],
 ) -> dict[str, str]:
     with tenant_session(actor.tenant_id) as session:
         try:
@@ -344,7 +353,7 @@ class EvidenceCorrection(BaseModel):
 async def correct_evidence(
     evidence_id: UUID,
     correction: EvidenceCorrection,
-    actor: Annotated[Actor, Depends(require_roles("operator", "approver", "admin"))],
+    actor: Annotated[Actor, Depends(require_permission(Permission.CASE_EDIT))],
 ) -> dict[str, str]:
     if correction.page is None and not (correction.sheet and correction.cell_range):
         raise HTTPException(422, "evidence requires page or sheet/cell")
@@ -381,7 +390,7 @@ async def correct_evidence(
 
 @app.post("/api/v1/bank-imports/preview", response_model=BankPreview)
 async def bank_preview(
-    actor: Annotated[Actor, Depends(require_roles("operator", "admin"))],
+    actor: Annotated[Actor, Depends(require_permission(Permission.FINANCIAL_EDIT))],
     file: Annotated[UploadFile, File()],
 ) -> BankPreview:
     del actor
@@ -393,7 +402,7 @@ async def bank_preview(
 
 @app.post("/api/v1/bank-imports/commit")
 async def bank_commit(
-    actor: Annotated[Actor, Depends(require_roles("operator", "admin"))],
+    actor: Annotated[Actor, Depends(require_permission(Permission.FINANCIAL_EDIT))],
     file: Annotated[UploadFile, File()],
 ) -> dict[str, int]:
     preview = preview_bank_csv(await file.read())
@@ -411,10 +420,14 @@ class AllocationRequest(BaseModel):
     allocations: list[AllocationSpec]
 
 
+class ReversalRequest(BaseModel):
+    reason: str
+
+
 @app.post("/api/v1/reconciliation/confirm")
 async def reconciliation_confirm(
     request: AllocationRequest,
-    actor: Annotated[Actor, Depends(require_roles("approver", "admin"))],
+    actor: Annotated[Actor, Depends(require_permission(Permission.APPROVAL_SINGLE))],
 ) -> dict[str, int]:
     with tenant_session(actor.tenant_id) as session:
         try:
@@ -432,9 +445,31 @@ async def reconciliation_confirm(
     return {"confirmed": len(confirmed)}
 
 
+@app.post("/api/v1/reconciliation/allocations/{allocation_id}/reverse")
+async def reconciliation_reverse(
+    allocation_id: UUID,
+    request: ReversalRequest,
+    actor: Annotated[Actor, Depends(require_permission(Permission.FINANCIAL_EDIT))],
+) -> dict[str, str]:
+    with tenant_session(actor.tenant_id) as session:
+        try:
+            allocation = reverse_allocation(
+                session,
+                tenant_id=actor.tenant_id,
+                allocation_id=allocation_id,
+                actor_id=actor.user_id,
+                reason=request.reason,
+            )
+        except LookupError as exc:
+            raise HTTPException(404, str(exc)) from exc
+        except ValueError as exc:
+            raise HTTPException(409, str(exc)) from exc
+    return {"id": str(allocation.id), "status": allocation.status}
+
+
 @app.get("/api/v1/reconciliation")
 async def reconciliation_queue(
-    actor: Annotated[Actor, Depends(current_actor)],
+    actor: Annotated[Actor, Depends(require_permission(Permission.CASE_VIEW))],
 ) -> list[dict[str, object]]:
     with tenant_session(actor.tenant_id) as session:
         transactions = session.scalars(
@@ -457,7 +492,9 @@ async def reconciliation_queue(
 
 
 @app.get("/api/v1/dashboard")
-async def dashboard(actor: Annotated[Actor, Depends(current_actor)]) -> dict[str, object]:
+async def dashboard(
+    actor: Annotated[Actor, Depends(require_permission(Permission.CASE_VIEW))],
+) -> dict[str, object]:
     with tenant_session(actor.tenant_id) as session:
         outstanding = session.scalar(
             select(func.coalesce(func.sum(Invoice.outstanding_minor), 0)).where(

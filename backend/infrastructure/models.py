@@ -80,6 +80,7 @@ class Invoice(Base, TenantOwned):
     outstanding_minor: Mapped[int] = mapped_column(BigInteger)
     currency: Mapped[str] = mapped_column(String(3), default="VND")
     source_fingerprint: Mapped[str] = mapped_column(String(64))
+    account_owner: Mapped[str | None] = mapped_column(String(320))
     __table_args__ = (
         CheckConstraint("amount_minor >= 0", name="ck_invoice_amount_nonnegative"),
         CheckConstraint(
@@ -212,6 +213,11 @@ class BankTransaction(Base, TenantOwned):
     reference: Mapped[str] = mapped_column(String(500))
     source_fingerprint: Mapped[str] = mapped_column(String(64))
     status: Mapped[str] = mapped_column(String(30), default="UNMATCHED")
+    transaction_type: Mapped[str] = mapped_column(String(30), default="CREDIT")
+    reversal_of_id: Mapped[UUID | None] = mapped_column(
+        PGUUID(as_uuid=True), ForeignKey("bank_transactions.id")
+    )
+    correction_version: Mapped[int] = mapped_column(Integer, default=1)
     __table_args__ = (
         CheckConstraint("amount_minor > 0", name="ck_bank_transaction_amount_positive"),
         UniqueConstraint("tenant_id", "source_fingerprint"),
@@ -228,6 +234,8 @@ class PaymentAllocation(Base, TenantOwned):
     amount_minor: Mapped[int] = mapped_column(BigInteger)
     status: Mapped[str] = mapped_column(String(30), default="PROPOSED")
     confirmed_by: Mapped[UUID | None] = mapped_column(PGUUID(as_uuid=True))
+    reversed_by: Mapped[UUID | None] = mapped_column(PGUUID(as_uuid=True))
+    reversal_reason: Mapped[str | None] = mapped_column(String(500))
     __table_args__ = (
         CheckConstraint("amount_minor > 0", name="ck_payment_allocation_amount_positive"),
         UniqueConstraint("tenant_id", "transaction_id", "invoice_id"),
@@ -308,3 +316,371 @@ class IdempotencyRecord(Base, TenantOwned):
     response_code: Mapped[int] = mapped_column(Integer)
     response_body: Mapped[dict[str, Any]] = mapped_column(JSONB)
     __table_args__ = (UniqueConstraint("tenant_id", "key"),)
+
+
+class ConnectorConfig(Base, TenantOwned):
+    __tablename__ = "connector_configs"
+    id: Mapped[UUID] = uuid_pk()
+    provider: Mapped[str] = mapped_column(String(30))
+    environment: Mapped[str] = mapped_column(String(30), default="sandbox")
+    secret_reference: Mapped[str] = mapped_column(String(500))
+    capabilities: Mapped[list[str]] = mapped_column(JSONB, default=list)
+    settings: Mapped[dict[str, Any]] = mapped_column(JSONB, default=dict)
+    enabled: Mapped[bool] = mapped_column(Boolean, default=False)
+    __table_args__ = (UniqueConstraint("tenant_id", "provider"),)
+
+
+class ExternalRecordMap(Base, TenantOwned):
+    __tablename__ = "external_record_maps"
+    id: Mapped[UUID] = uuid_pk()
+    provider: Mapped[str] = mapped_column(String(30))
+    record_type: Mapped[str] = mapped_column(String(50))
+    external_id: Mapped[str] = mapped_column(String(300))
+    external_version: Mapped[str] = mapped_column(String(100))
+    canonical_type: Mapped[str] = mapped_column(String(50))
+    canonical_id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True))
+    source_timestamp: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    provenance: Mapped[dict[str, Any]] = mapped_column(JSONB, default=dict)
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "provider", "record_type", "external_id", "external_version"),
+    )
+
+
+class InboxEvent(Base, TenantOwned):
+    __tablename__ = "inbox_events"
+    id: Mapped[UUID] = uuid_pk()
+    provider: Mapped[str] = mapped_column(String(30))
+    external_event_id: Mapped[str] = mapped_column(String(300))
+    payload_hash: Mapped[str] = mapped_column(String(64))
+    received_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(UTC)
+    )
+    processed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    __table_args__ = (UniqueConstraint("tenant_id", "provider", "external_event_id"),)
+
+
+class PaymentRule(Base, TenantOwned):
+    __tablename__ = "payment_rules"
+    id: Mapped[UUID] = uuid_pk()
+    customer_id: Mapped[UUID | None] = mapped_column(
+        PGUUID(as_uuid=True), ForeignKey("customers.id")
+    )
+    rule_type: Mapped[str] = mapped_column(String(50))
+    scope: Mapped[str] = mapped_column(String(30))
+    priority: Mapped[int] = mapped_column(Integer, default=100)
+    effective_from: Mapped[date] = mapped_column(Date)
+    expires_on: Mapped[date | None] = mapped_column(Date)
+    version: Mapped[int] = mapped_column(Integer)
+    status: Mapped[str] = mapped_column(String(20), default="DRAFT")
+    definition: Mapped[dict[str, Any]] = mapped_column(JSONB)
+    created_by: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True))
+    published_by: Mapped[UUID | None] = mapped_column(PGUUID(as_uuid=True))
+    __table_args__ = (UniqueConstraint("tenant_id", "customer_id", "rule_type", "version"),)
+
+
+class ZaloTemplateRecord(Base, TenantOwned):
+    __tablename__ = "zalo_templates"
+    id: Mapped[UUID] = uuid_pk()
+    template_id: Mapped[str] = mapped_column(String(100))
+    version: Mapped[int] = mapped_column(Integer)
+    locale: Mapped[str] = mapped_column(String(20))
+    allowed_variables: Mapped[list[str]] = mapped_column(JSONB, default=list)
+    policy: Mapped[dict[str, Any]] = mapped_column(JSONB, default=dict)
+    status: Mapped[str] = mapped_column(String(20), default="DRAFT")
+    __table_args__ = (UniqueConstraint("tenant_id", "template_id", "version"),)
+
+
+class NotificationAction(Base, TenantOwned):
+    __tablename__ = "notification_actions"
+    id: Mapped[UUID] = uuid_pk()
+    approval_id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), ForeignKey("approvals.id"))
+    channel: Mapped[str] = mapped_column(String(30))
+    recipient_id: Mapped[str] = mapped_column(String(300))
+    template_id: Mapped[str] = mapped_column(String(100))
+    template_version: Mapped[int] = mapped_column(Integer)
+    payload: Mapped[dict[str, Any]] = mapped_column(JSONB)
+    idempotency_key: Mapped[str] = mapped_column(String(300))
+    status: Mapped[str] = mapped_column(String(30), default="PREVIEWED")
+    dry_run: Mapped[bool] = mapped_column(Boolean, default=True)
+    external_id: Mapped[str | None] = mapped_column(String(300))
+    __table_args__ = (UniqueConstraint("tenant_id", "idempotency_key"),)
+
+
+class BulkApprovalBatch(Base, TenantOwned):
+    __tablename__ = "bulk_approval_batches"
+    id: Mapped[UUID] = uuid_pk()
+    idempotency_key: Mapped[str] = mapped_column(String(300))
+    created_by: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True))
+    status: Mapped[str] = mapped_column(String(30), default="PREVIEWED")
+    filter_snapshot: Mapped[dict[str, Any]] = mapped_column(JSONB, default=dict)
+    summary: Mapped[dict[str, Any]] = mapped_column(JSONB, default=dict)
+    __table_args__ = (UniqueConstraint("tenant_id", "idempotency_key"),)
+
+
+class BulkApprovalItem(Base, TenantOwned):
+    __tablename__ = "bulk_approval_items"
+    id: Mapped[UUID] = uuid_pk()
+    batch_id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True), ForeignKey("bulk_approval_batches.id")
+    )
+    approval_id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), ForeignKey("approvals.id"))
+    expected_version: Mapped[int] = mapped_column(Integer)
+    status: Mapped[str] = mapped_column(String(30))
+    reason: Mapped[str | None] = mapped_column(String(100))
+    __table_args__ = (UniqueConstraint("tenant_id", "batch_id", "approval_id"),)
+
+
+class ForecastSnapshot(Base, TenantOwned):
+    __tablename__ = "forecast_snapshots"
+    id: Mapped[UUID] = uuid_pk()
+    as_of: Mapped[date] = mapped_column(Date)
+    horizon_days: Mapped[int] = mapped_column(Integer)
+    model_version: Mapped[str] = mapped_column(String(100))
+    rule_version: Mapped[str] = mapped_column(String(100))
+    inputs_hash: Mapped[str] = mapped_column(String(64))
+    predictions: Mapped[list[dict[str, Any]]] = mapped_column(JSONB)
+    metrics: Mapped[dict[str, Any]] = mapped_column(JSONB, default=dict)
+    provenance: Mapped[dict[str, Any]] = mapped_column(JSONB, default=dict)
+
+
+class LLMPricing(Base):
+    __tablename__ = "llm_pricing"
+    id: Mapped[UUID] = uuid_pk()
+    provider: Mapped[str] = mapped_column(String(30))
+    model: Mapped[str] = mapped_column(String(100))
+    effective_from: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    currency: Mapped[str] = mapped_column(String(3))
+    input_per_million: Mapped[str] = mapped_column(String(40))
+    output_per_million: Mapped[str] = mapped_column(String(40))
+    version: Mapped[int] = mapped_column(Integer)
+    __table_args__ = (UniqueConstraint("provider", "model", "effective_from", "version"),)
+
+
+class LLMUsageEvent(Base, TenantOwned):
+    __tablename__ = "llm_usage_events"
+    id: Mapped[UUID] = uuid_pk()
+    occurred_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    task_type: Mapped[str] = mapped_column(String(100))
+    provider: Mapped[str] = mapped_column(String(30))
+    model: Mapped[str] = mapped_column(String(100))
+    prompt_version: Mapped[str] = mapped_column(String(100))
+    route: Mapped[str] = mapped_column(String(100))
+    fallback: Mapped[bool] = mapped_column(Boolean, default=False)
+    success: Mapped[bool] = mapped_column(Boolean)
+    schema_valid: Mapped[bool] = mapped_column(Boolean)
+    latency_ms: Mapped[int] = mapped_column(Integer)
+    input_tokens: Mapped[int | None] = mapped_column(Integer)
+    output_tokens: Mapped[int | None] = mapped_column(Integer)
+    request_metadata: Mapped[dict[str, Any]] = mapped_column(JSONB, default=dict)
+
+
+class LLMQualityMetric(Base, TenantOwned):
+    __tablename__ = "llm_quality_metrics"
+    id: Mapped[UUID] = uuid_pk()
+    measured_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    dataset_version: Mapped[str] = mapped_column(String(100))
+    task_type: Mapped[str] = mapped_column(String(100))
+    provider: Mapped[str] = mapped_column(String(30))
+    model: Mapped[str] = mapped_column(String(100))
+    prompt_version: Mapped[str] = mapped_column(String(100))
+    metric_name: Mapped[str] = mapped_column(String(100))
+    metric_value: Mapped[str] = mapped_column(String(50))
+    sample_count: Mapped[int] = mapped_column(Integer)
+
+
+class FeatureDefinition(Base, TenantOwned):
+    __tablename__ = "feature_definitions"
+    id: Mapped[UUID] = uuid_pk()
+    name: Mapped[str] = mapped_column(String(100))
+    version: Mapped[str] = mapped_column(String(100))
+    schema: Mapped[dict[str, Any]] = mapped_column(JSONB)
+    point_in_time_policy: Mapped[dict[str, Any]] = mapped_column(JSONB)
+    status: Mapped[str] = mapped_column(String(30), default="ACTIVE")
+    __table_args__ = (UniqueConstraint("tenant_id", "name", "version"),)
+
+
+class FeatureSnapshot(Base, TenantOwned):
+    __tablename__ = "feature_snapshots"
+    id: Mapped[UUID] = uuid_pk()
+    entity_type: Mapped[str] = mapped_column(String(50))
+    entity_id: Mapped[str] = mapped_column(String(200))
+    as_of: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    feature_version: Mapped[str] = mapped_column(String(100))
+    inputs_hash: Mapped[str] = mapped_column(String(64))
+    features: Mapped[dict[str, Any]] = mapped_column(JSONB)
+    provenance: Mapped[dict[str, Any]] = mapped_column(JSONB)
+    data_quality: Mapped[list[str]] = mapped_column(JSONB, default=list)
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "entity_type", "entity_id", "as_of", "feature_version"),
+    )
+
+
+class ModelRegistry(Base, TenantOwned):
+    __tablename__ = "model_registry"
+    id: Mapped[UUID] = uuid_pk()
+    task_type: Mapped[str] = mapped_column(String(100))
+    model_name: Mapped[str] = mapped_column(String(100))
+    model_version: Mapped[str] = mapped_column(String(100))
+    status: Mapped[str] = mapped_column(String(30), default="CHALLENGER")
+    dataset_version: Mapped[str] = mapped_column(String(100))
+    feature_version: Mapped[str] = mapped_column(String(100))
+    metrics: Mapped[dict[str, Any]] = mapped_column(JSONB)
+    trained_through: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    evaluated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    config: Mapped[dict[str, Any]] = mapped_column(JSONB, default=dict)
+    __table_args__ = (UniqueConstraint("tenant_id", "task_type", "model_name", "model_version"),)
+
+
+class PredictionRun(Base, TenantOwned):
+    __tablename__ = "prediction_runs"
+    id: Mapped[UUID] = uuid_pk()
+    run_type: Mapped[str] = mapped_column(String(50))
+    as_of: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    cutoff: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    horizon_days: Mapped[int] = mapped_column(Integer)
+    model_version: Mapped[str] = mapped_column(String(100))
+    feature_version: Mapped[str] = mapped_column(String(100))
+    dataset_version: Mapped[str] = mapped_column(String(100))
+    inputs_hash: Mapped[str] = mapped_column(String(64))
+    status: Mapped[str] = mapped_column(String(30), default="PENDING")
+    metrics: Mapped[dict[str, Any]] = mapped_column(JSONB, default=dict)
+    config: Mapped[dict[str, Any]] = mapped_column(JSONB, default=dict)
+
+
+class PredictionRecord(Base, TenantOwned):
+    __tablename__ = "prediction_records"
+    id: Mapped[UUID] = uuid_pk()
+    run_id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), ForeignKey("prediction_runs.id"))
+    entity_type: Mapped[str] = mapped_column(String(50))
+    entity_id: Mapped[str] = mapped_column(String(200))
+    horizon_days: Mapped[int] = mapped_column(Integer)
+    value: Mapped[str] = mapped_column(String(50))
+    lower_value: Mapped[str | None] = mapped_column(String(50))
+    upper_value: Mapped[str | None] = mapped_column(String(50))
+    reason_codes: Mapped[list[str]] = mapped_column(JSONB, default=list)
+    feature_snapshot_id: Mapped[UUID | None] = mapped_column(
+        PGUUID(as_uuid=True), ForeignKey("feature_snapshots.id")
+    )
+    provenance: Mapped[dict[str, Any]] = mapped_column(JSONB, default=dict)
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "run_id", "entity_type", "entity_id", "horizon_days"),
+    )
+
+
+class AutomationPolicyRecord(Base, TenantOwned):
+    __tablename__ = "automation_policies"
+    id: Mapped[UUID] = uuid_pk()
+    customer_id: Mapped[UUID | None] = mapped_column(
+        PGUUID(as_uuid=True), ForeignKey("customers.id")
+    )
+    mode: Mapped[str] = mapped_column(String(20), default="disabled")
+    policy_version: Mapped[str] = mapped_column(String(100))
+    config: Mapped[dict[str, Any]] = mapped_column(JSONB)
+    kill_switch: Mapped[bool] = mapped_column(Boolean, default=True)
+    enabled_by: Mapped[UUID | None] = mapped_column(PGUUID(as_uuid=True))
+    enabled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    __table_args__ = (UniqueConstraint("tenant_id", "customer_id", "policy_version"),)
+
+
+class AutomationDecisionRecord(Base, TenantOwned):
+    __tablename__ = "automation_decisions"
+    id: Mapped[UUID] = uuid_pk()
+    case_id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), ForeignKey("payment_cases.id"))
+    policy_id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True), ForeignKey("automation_policies.id")
+    )
+    evaluated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    case_version: Mapped[int] = mapped_column(Integer)
+    disposition: Mapped[str] = mapped_column(String(30))
+    eligible: Mapped[bool] = mapped_column(Boolean)
+    exclusions: Mapped[list[str]] = mapped_column(JSONB, default=list)
+    idempotency_key: Mapped[str] = mapped_column(String(300))
+    external_id: Mapped[str | None] = mapped_column(String(300))
+    delivery_status: Mapped[str] = mapped_column(String(30), default="NOT_SENT")
+    __table_args__ = (UniqueConstraint("tenant_id", "idempotency_key"),)
+
+
+class DisputeRootCauseRecord(Base, TenantOwned):
+    __tablename__ = "dispute_root_causes"
+    id: Mapped[UUID] = uuid_pk()
+    case_id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), ForeignKey("payment_cases.id"))
+    primary_cause: Mapped[str] = mapped_column(String(80))
+    contributing_causes: Mapped[list[str]] = mapped_column(JSONB, default=list)
+    confidence: Mapped[str] = mapped_column(String(30))
+    evidence_ids: Mapped[list[str]] = mapped_column(JSONB, default=list)
+    reason_codes: Mapped[list[str]] = mapped_column(JSONB, default=list)
+    taxonomy_version: Mapped[str] = mapped_column(String(100))
+    first_detected_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    owner_id: Mapped[str | None] = mapped_column(String(200))
+    status: Mapped[str] = mapped_column(String(30), default="OPEN")
+    resolution: Mapped[str | None] = mapped_column(Text)
+    resolved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    reopen_count: Mapped[int] = mapped_column(Integer, default=0)
+    corrected_by: Mapped[UUID | None] = mapped_column(PGUUID(as_uuid=True))
+
+
+class EscalationRecommendationRecord(Base, TenantOwned):
+    __tablename__ = "escalation_recommendations"
+    id: Mapped[UUID] = uuid_pk()
+    case_id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), ForeignKey("payment_cases.id"))
+    generated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    rank: Mapped[int] = mapped_column(Integer)
+    strategy: Mapped[str] = mapped_column(String(80))
+    rationale: Mapped[dict[str, Any]] = mapped_column(JSONB)
+    evidence_ids: Mapped[list[str]] = mapped_column(JSONB, default=list)
+    confidence: Mapped[str] = mapped_column(String(30))
+    rule_version: Mapped[str] = mapped_column(String(100))
+    feedback: Mapped[str | None] = mapped_column(String(30))
+    feedback_by: Mapped[UUID | None] = mapped_column(PGUUID(as_uuid=True))
+
+
+class CustomerBehaviorSnapshot(Base, TenantOwned):
+    __tablename__ = "customer_behavior_snapshots"
+    id: Mapped[UUID] = uuid_pk()
+    customer_id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), ForeignKey("customers.id"))
+    as_of: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    window_days: Mapped[int] = mapped_column(Integer)
+    profile_version: Mapped[str] = mapped_column(String(100))
+    metrics: Mapped[dict[str, Any]] = mapped_column(JSONB)
+    segment: Mapped[str] = mapped_column(String(50))
+    sample_size: Mapped[int] = mapped_column(Integer)
+    data_quality: Mapped[list[str]] = mapped_column(JSONB, default=list)
+    provenance: Mapped[dict[str, Any]] = mapped_column(JSONB, default=dict)
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "customer_id", "as_of", "window_days", "profile_version"),
+    )
+
+
+class AccountManagerBenchmarkSnapshot(Base, TenantOwned):
+    __tablename__ = "account_manager_benchmarks"
+    id: Mapped[UUID] = uuid_pk()
+    manager_id: Mapped[str] = mapped_column(String(200))
+    team_id: Mapped[str | None] = mapped_column(String(200))
+    as_of: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    window_days: Mapped[int] = mapped_column(Integer)
+    metric_version: Mapped[str] = mapped_column(String(100))
+    raw_metrics: Mapped[dict[str, Any]] = mapped_column(JSONB)
+    adjusted_metrics: Mapped[dict[str, Any]] = mapped_column(JSONB)
+    sample_size: Mapped[int] = mapped_column(Integer)
+    uncertainty: Mapped[dict[str, Any]] = mapped_column(JSONB, default=dict)
+    suppressed: Mapped[bool] = mapped_column(Boolean, default=True)
+    warnings: Mapped[list[str]] = mapped_column(JSONB, default=list)
+    provenance: Mapped[dict[str, Any]] = mapped_column(JSONB, default=dict)
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "manager_id", "as_of", "window_days", "metric_version"),
+    )
+
+
+class DerivedJobRun(Base, TenantOwned):
+    __tablename__ = "derived_job_runs"
+    id: Mapped[UUID] = uuid_pk()
+    job_type: Mapped[str] = mapped_column(String(100))
+    checkpoint: Mapped[str] = mapped_column(String(300))
+    idempotency_key: Mapped[str] = mapped_column(String(300))
+    status: Mapped[str] = mapped_column(String(30), default="PENDING")
+    attempts: Mapped[int] = mapped_column(Integer, default=0)
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    error_class: Mapped[str | None] = mapped_column(String(100))
+    metrics: Mapped[dict[str, Any]] = mapped_column(JSONB, default=dict)
+    __table_args__ = (UniqueConstraint("tenant_id", "idempotency_key"),)

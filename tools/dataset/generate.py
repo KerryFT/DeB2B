@@ -5,6 +5,7 @@ import csv
 import hashlib
 import json
 import random
+import re
 import zipfile
 from datetime import date, datetime, timedelta
 from io import BytesIO
@@ -107,7 +108,17 @@ def write_tabular(root: Path, rows: list[dict[str, Any]]) -> list[Path]:
             info = zipfile.ZipInfo(name, date_time=(1980, 1, 1, 0, 0, 0))
             info.compress_type = zipfile.ZIP_DEFLATED
             info.external_attr = 0o600 << 16
-            target.writestr(info, source.read(name))
+            content = source.read(name)
+            if name == "docProps/core.xml":
+                content = re.sub(
+                    rb"<dcterms:modified[^>]*>.*?</dcterms:modified>",
+                    (
+                        b'<dcterms:modified xsi:type="dcterms:W3CDTF">'
+                        b"1980-01-01T00:00:00Z</dcterms:modified>"
+                    ),
+                    content,
+                )
+            target.writestr(info, content)
     source.close()
     return [csv_path, xlsx_path]
 
@@ -132,9 +143,118 @@ def write_bank_csv(root: Path, rows: list[dict[str, Any]], count: int) -> Path:
     return path
 
 
+def write_v1_scenarios(root: Path, rows: list[dict[str, Any]]) -> Path:
+    path = root / "v1-scenarios.json"
+    invoice = rows[0]
+    scenarios = {
+        "misa": {
+            "pages": 2,
+            "checkpoint": "misa-checkpoint-2",
+            "events": ["token_expired", "throttled", "duplicate", "partial_failure"],
+        },
+        "outlook": {
+            "conversation_id": "conversation-synthetic-1",
+            "delta_tokens": ["delta-1", "delta-2"],
+            "events": ["duplicate_webhook", "missed", "subscription_expired"],
+            "attachments": ["acceptance-synthetic.pdf"],
+        },
+        "zalo": {
+            "template": {"id": "payment-reminder", "version": 1, "locale": "vi-VN"},
+            "recipients": ["verified", "unverified", "suppressed"],
+            "outcomes": ["success", "reject", "timeout", "duplicate", "policy_block"],
+        },
+        "bank": [
+            {"kind": "partial", "invoice": invoice["invoice_number"], "amount": 1_000_000},
+            {"kind": "split", "invoices": [rows[0]["invoice_number"], rows[1]["invoice_number"]]},
+            {"kind": "aggregate", "transactions": ["BANK-A", "BANK-B"]},
+            {"kind": "fee", "fee_minor": 5_000},
+            {"kind": "reversal", "reversal_of": "BANK-SYN-0001"},
+            {"kind": "fx_without_rate", "currency": "USD", "disposition": "manual_review"},
+            {"kind": "ambiguous", "candidates": 2},
+        ],
+        "payment_rules": [
+            {"customer": "CUS-001", "version": 2, "grace_days": 3},
+            {"customer": "CUS-002", "version": 1, "grace_days": 7},
+            {"customer": "CUS-003", "version": 2, "conflict": True},
+        ],
+        "rbac": {
+            "tenants": ["tenant-a", "tenant-b"],
+            "roles": [
+                "tenant_admin",
+                "ar_manager",
+                "ar_specialist",
+                "account_owner",
+                "approver",
+                "auditor",
+            ],
+        },
+        "llm": {
+            "providers": ["openai", "gemini", "anthropic"],
+            "usage_cases": ["primary", "fallback", "missing_usage", "unknown_pricing"],
+            "pricing_versions": 2,
+        },
+        "forecast": {
+            "as_of": "2026-08-24",
+            "history_months": 12,
+            "broken_promises": 2,
+            "partial_payments": 3,
+        },
+    }
+    path.write_text(json.dumps(scenarios, ensure_ascii=False, indent=2), encoding="utf-8")
+    return path
+
+
+def write_v2_scenarios(root: Path, rows: list[dict[str, Any]]) -> Path:
+    path = root / "v2-scenarios.json"
+    scenarios = {
+        "tenants": ["tenant-a", "tenant-b"],
+        "automation": [
+            {"case": "safe-shadow", "expected": "SHADOW_ELIGIBLE", "send": False},
+            {"case": "paid-before-send", "expected": "BLOCKED"},
+            {"case": "disputed-before-send", "expected": "BLOCKED"},
+            {"case": "recipient-changed", "expected": "BLOCKED"},
+            {"case": "duplicate-timer", "expected": "IDEMPOTENT"},
+            {"case": "suppressed", "expected": "BLOCKED"},
+            {"case": "bounce-circuit", "expected": "BLOCKED"},
+            {"case": "kill-switch-race", "expected": "BLOCKED"},
+        ],
+        "escalation": [
+            {"case": "disputed", "allowed": "temporary_pause", "human_decision": True},
+            {"case": "missing-data", "allowed": "manager_review", "human_decision": True},
+            {"case": "prompt-injection", "forbidden": "threat_or_public_shaming"},
+        ],
+        "disputes": [
+            {"labels": ["pricing_amount_mismatch", "po_mismatch"], "evidence": ["span-1"]},
+            {"labels": ["unknown"], "evidence": []},
+            {"lifecycle": ["detected", "human_corrected", "resolved", "reopened"]},
+        ],
+        "time_series": {
+            "as_of": "2026-08-24",
+            "horizons": [7, 14, 30],
+            "conditions": ["censored", "partial", "seasonality", "drift", "late_arrival"],
+            "invoice_ids": [row["invoice_number"] for row in rows],
+        },
+        "behavior_profiles": [
+            "new_sparse",
+            "consistent",
+            "variable",
+            "dispute_heavy",
+            "promise_broken",
+        ],
+        "benchmark": {
+            "managers": ["manager-a", "manager-b", "manager-small-cohort"],
+            "portfolio_mix": ["current", "aged", "disputed"],
+            "reassignment": True,
+            "minimum_cohort_suppression": True,
+        },
+    }
+    path.write_text(json.dumps(scenarios, ensure_ascii=False, indent=2), encoding="utf-8")
+    return path
+
+
 def generate(profile: str, output: Path, seed: int = DEFAULT_SEED) -> Path:
     counts = PROFILES[profile]
-    root = output / f"{profile}-v1"
+    root = output / f"{profile}-v2"
     root.mkdir(parents=True, exist_ok=True)
     rows = invoice_rows(counts["invoices"], seed)
     artifacts = write_tabular(root, rows)
@@ -145,8 +265,10 @@ def generate(profile: str, output: Path, seed: int = DEFAULT_SEED) -> Path:
         encoding="utf-8",
     )
     artifacts.append(case_path)
+    artifacts.append(write_v1_scenarios(root, rows))
+    artifacts.append(write_v2_scenarios(root, rows))
     manifest = {
-        "dataset_version": "synthetic-v1",
+        "dataset_version": "synthetic-v3",
         "profile": profile,
         "seed": seed,
         "source": "synthetic",
@@ -155,8 +277,8 @@ def generate(profile: str, output: Path, seed: int = DEFAULT_SEED) -> Path:
         "splits": {"train": 70, "validation": 15, "test": 15}
         if profile == "full"
         else {"ci": counts["invoices"]},
-        "generator_version": "1.0.0",
-        "gold_review": "synthetic-rules-reviewed-v1",
+        "generator_version": "3.0.0",
+        "gold_review": "synthetic-rules-reviewed-v2",
         "artifacts": [
             {"path": path.name, "sha256": sha256(path), "bytes": path.stat().st_size}
             for path in artifacts

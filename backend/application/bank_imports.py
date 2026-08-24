@@ -21,6 +21,8 @@ class BankRow(BaseModel):
     amount: Decimal = Field(gt=0)
     currency: str = Field(pattern=r"^[A-Za-z]{3}$")
     reference: str = Field(min_length=1, max_length=500)
+    transaction_type: str = Field(default="CREDIT", pattern=r"^(CREDIT|REVERSAL|REFUND)$")
+    reversal_of_external_id: str | None = None
 
     def fingerprint(self) -> str:
         parts = (
@@ -29,6 +31,8 @@ class BankRow(BaseModel):
             str(self.amount),
             self.currency.upper(),
             self.reference.strip(),
+            self.transaction_type,
+            self.reversal_of_external_id or "",
         )
         source = "|".join(parts)
         return hashlib.sha256(source.encode()).hexdigest()
@@ -73,6 +77,7 @@ def upsert_bank_rows(session: Session, *, tenant_id: UUID, rows: list[BankRow]) 
                 currency=amount.currency,
                 reference=row.reference,
                 source_fingerprint=row.fingerprint(),
+                transaction_type=row.transaction_type,
             )
         )
         created += 1

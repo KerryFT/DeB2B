@@ -1,0 +1,135 @@
+{
+  "misa": {
+    "pages": 2,
+    "checkpoint": "misa-checkpoint-2",
+    "events": [
+      "token_expired",
+      "throttled",
+      "duplicate",
+      "partial_failure"
+    ]
+  },
+  "outlook": {
+    "conversation_id": "conversation-synthetic-1",
+    "delta_tokens": [
+      "delta-1",
+      "delta-2"
+    ],
+    "events": [
+      "duplicate_webhook",
+      "missed",
+      "subscription_expired"
+    ],
+    "attachments": [
+      "acceptance-synthetic.pdf"
+    ]
+  },
+  "zalo": {
+    "template": {
+      "id": "payment-reminder",
+      "version": 1,
+      "locale": "vi-VN"
+    },
+    "recipients": [
+      "verified",
+      "unverified",
+      "suppressed"
+    ],
+    "outcomes": [
+      "success",
+      "reject",
+      "timeout",
+      "duplicate",
+      "policy_block"
+    ]
+  },
+  "bank": [
+    {
+      "kind": "partial",
+      "invoice": "INV-2026-0001",
+      "amount": 1000000
+    },
+    {
+      "kind": "split",
+      "invoices": [
+        "INV-2026-0001",
+        "INV-2026-0002"
+      ]
+    },
+    {
+      "kind": "aggregate",
+      "transactions": [
+        "BANK-A",
+        "BANK-B"
+      ]
+    },
+    {
+      "kind": "fee",
+      "fee_minor": 5000
+    },
+    {
+      "kind": "reversal",
+      "reversal_of": "BANK-SYN-0001"
+    },
+    {
+      "kind": "fx_without_rate",
+      "currency": "USD",
+      "disposition": "manual_review"
+    },
+    {
+      "kind": "ambiguous",
+      "candidates": 2
+    }
+  ],
+  "payment_rules": [
+    {
+      "customer": "CUS-001",
+      "version": 2,
+      "grace_days": 3
+    },
+    {
+      "customer": "CUS-002",
+      "version": 1,
+      "grace_days": 7
+    },
+    {
+      "customer": "CUS-003",
+      "version": 2,
+      "conflict": true
+    }
+  ],
+  "rbac": {
+    "tenants": [
+      "tenant-a",
+      "tenant-b"
+    ],
+    "roles": [
+      "tenant_admin",
+      "ar_manager",
+      "ar_specialist",
+      "account_owner",
+      "approver",
+      "auditor"
+    ]
+  },
+  "llm": {
+    "providers": [
+      "openai",
+      "gemini",
+      "anthropic"
+    ],
+    "usage_cases": [
+      "primary",
+      "fallback",
+      "missing_usage",
+      "unknown_pricing"
+    ],
+    "pricing_versions": 2
+  },
+  "forecast": {
+    "as_of": "2026-08-24",
+    "history_months": 12,
+    "broken_promises": 2,
+    "partial_payments": 3
+  }
+}

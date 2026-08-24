@@ -9,7 +9,7 @@ def test_full_dataset_manifest_checksums_splits_and_provenance(tmp_path: Path) -
     manifest = generate("full", tmp_path)
     report = validate_dataset(manifest)
     assert report["valid"]
-    assert report["artifact_count"] == 4
+    assert report["artifact_count"] == 6
 
 
 def test_cross_provider_regression_records_route_decision() -> None:

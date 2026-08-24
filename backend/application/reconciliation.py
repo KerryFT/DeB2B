@@ -43,6 +43,8 @@ def confirm_allocations(
     )
     if transaction is None:
         raise LookupError("bank transaction not found")
+    if transaction.transaction_type != "CREDIT":
+        raise ValueError("only credit transactions can be allocated")
     already_allocated = int(
         session.scalar(
             select(func.coalesce(func.sum(PaymentAllocation.amount_minor), 0)).where(
@@ -104,3 +106,64 @@ def confirm_allocations(
             if case is not None:
                 case.status = "PAID"
     return created
+
+
+def reverse_allocation(
+    session: Session,
+    *,
+    tenant_id: UUID,
+    allocation_id: UUID,
+    actor_id: UUID,
+    reason: str,
+) -> PaymentAllocation:
+    if not reason.strip():
+        raise ValueError("reversal reason is required")
+    allocation = session.scalar(
+        select(PaymentAllocation)
+        .where(
+            PaymentAllocation.tenant_id == tenant_id,
+            PaymentAllocation.id == allocation_id,
+        )
+        .with_for_update()
+    )
+    if allocation is None:
+        raise LookupError("allocation not found")
+    if allocation.status != "CONFIRMED":
+        raise ValueError("only confirmed allocations can be reversed")
+    invoice = session.scalar(
+        select(Invoice)
+        .where(Invoice.tenant_id == tenant_id, Invoice.id == allocation.invoice_id)
+        .with_for_update()
+    )
+    if invoice is None:
+        raise LookupError("invoice not found")
+    if invoice.outstanding_minor + allocation.amount_minor > invoice.amount_minor:
+        raise ValueError("reversal would exceed invoice original amount")
+    invoice.outstanding_minor += allocation.amount_minor
+    allocation.status = "REVERSED"
+    allocation.reversed_by = actor_id
+    allocation.reversal_reason = reason.strip()
+    transaction = session.scalar(
+        select(BankTransaction)
+        .where(
+            BankTransaction.tenant_id == tenant_id,
+            BankTransaction.id == allocation.transaction_id,
+        )
+        .with_for_update()
+    )
+    if transaction is not None:
+        transaction.status = "REVERSED"
+    case_ids = session.scalars(
+        select(CaseInvoice.case_id).where(
+            CaseInvoice.tenant_id == tenant_id, CaseInvoice.invoice_id == invoice.id
+        )
+    )
+    for case_id in case_ids:
+        case = session.scalar(
+            select(PaymentCase)
+            .where(PaymentCase.tenant_id == tenant_id, PaymentCase.id == case_id)
+            .with_for_update()
+        )
+        if case is not None and case.status == "PAID":
+            case.status = "PAYMENT_REVERSED"
+    return allocation

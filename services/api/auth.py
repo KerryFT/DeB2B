@@ -7,6 +7,7 @@ from fastapi import Depends, Header, HTTPException
 from jwt import PyJWKClient
 from sqlalchemy import select
 
+from backend.application.permissions import ROLE_PERMISSIONS, Permission, is_allowed
 from backend.infrastructure.config import get_settings
 from backend.infrastructure.database import SessionFactory
 from backend.infrastructure.models import Membership, User
@@ -27,7 +28,7 @@ async def current_actor(
 ) -> Actor:
     settings = get_settings()
     if settings.dev_auth_enabled and x_dev_user_id and x_dev_tenant_id:
-        if x_dev_role not in {"viewer", "operator", "approver", "admin"}:
+        if x_dev_role not in ROLE_PERMISSIONS:
             raise HTTPException(403, "invalid role")
         return Actor(UUID(x_dev_user_id), UUID(x_dev_tenant_id), x_dev_role)
     if not authorization:
@@ -71,6 +72,15 @@ def require_roles(*roles: str):  # type: ignore[no-untyped-def]
     async def dependency(actor: Annotated[Actor, Depends(current_actor)]) -> Actor:
         if actor.role not in roles:
             raise HTTPException(403, "insufficient role")
+        return actor
+
+    return dependency
+
+
+def require_permission(permission: Permission):  # type: ignore[no-untyped-def]
+    async def dependency(actor: Annotated[Actor, Depends(current_actor)]) -> Actor:
+        if not is_allowed(actor.role, permission):
+            raise HTTPException(403, f"missing permission: {permission.value}")
         return actor
 
     return dependency

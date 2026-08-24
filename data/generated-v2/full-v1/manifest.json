@@ -1,0 +1,50 @@
+{
+  "dataset_version": "synthetic-v2",
+  "profile": "full",
+  "seed": 20260823,
+  "source": "synthetic",
+  "license": "project-generated",
+  "counts": {
+    "invoices": 100,
+    "contracts": 50,
+    "po_acceptance": 100,
+    "threads": 100,
+    "disputes": 50,
+    "promises": 50,
+    "bank": 50
+  },
+  "splits": {
+    "train": 70,
+    "validation": 15,
+    "test": 15
+  },
+  "generator_version": "2.0.0",
+  "gold_review": "synthetic-rules-reviewed-v1",
+  "artifacts": [
+    {
+      "path": "invoices.csv",
+      "sha256": "86cedb10c4498529a581f4ffd00e474cabf23ba7253cb0a16b33dc2bf3041bc7",
+      "bytes": 20496
+    },
+    {
+      "path": "invoices.xlsx",
+      "sha256": "499babeaaf9e0aa62c9dcbbbc621ebbbc6cf5dd64cef56c484e077f342c19e20",
+      "bytes": 12875
+    },
+    {
+      "path": "bank.csv",
+      "sha256": "91a1a7453da576e6b229867b6390c0863e8fded8295033612c6101436693b7b8",
+      "bytes": 3287
+    },
+    {
+      "path": "cases.jsonl",
+      "sha256": "d38d1913f1c2edfbee60af6684265873eb9f48ff44b2f894b1e78e3fb0408e3e",
+      "bytes": 52661
+    },
+    {
+      "path": "v1-scenarios.json",
+      "sha256": "e990a403d12b6700e176f1bb8fb240274cfc19730a0f83b89d929058a5549a3c",
+      "bytes": 2406
+    }
+  ]
+}

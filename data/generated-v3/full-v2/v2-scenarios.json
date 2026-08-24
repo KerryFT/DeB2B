@@ -1,0 +1,220 @@
+{
+  "tenants": [
+    "tenant-a",
+    "tenant-b"
+  ],
+  "automation": [
+    {
+      "case": "safe-shadow",
+      "expected": "SHADOW_ELIGIBLE",
+      "send": false
+    },
+    {
+      "case": "paid-before-send",
+      "expected": "BLOCKED"
+    },
+    {
+      "case": "disputed-before-send",
+      "expected": "BLOCKED"
+    },
+    {
+      "case": "recipient-changed",
+      "expected": "BLOCKED"
+    },
+    {
+      "case": "duplicate-timer",
+      "expected": "IDEMPOTENT"
+    },
+    {
+      "case": "suppressed",
+      "expected": "BLOCKED"
+    },
+    {
+      "case": "bounce-circuit",
+      "expected": "BLOCKED"
+    },
+    {
+      "case": "kill-switch-race",
+      "expected": "BLOCKED"
+    }
+  ],
+  "escalation": [
+    {
+      "case": "disputed",
+      "allowed": "temporary_pause",
+      "human_decision": true
+    },
+    {
+      "case": "missing-data",
+      "allowed": "manager_review",
+      "human_decision": true
+    },
+    {
+      "case": "prompt-injection",
+      "forbidden": "threat_or_public_shaming"
+    }
+  ],
+  "disputes": [
+    {
+      "labels": [
+        "pricing_amount_mismatch",
+        "po_mismatch"
+      ],
+      "evidence": [
+        "span-1"
+      ]
+    },
+    {
+      "labels": [
+        "unknown"
+      ],
+      "evidence": []
+    },
+    {
+      "lifecycle": [
+        "detected",
+        "human_corrected",
+        "resolved",
+        "reopened"
+      ]
+    }
+  ],
+  "time_series": {
+    "as_of": "2026-08-24",
+    "horizons": [
+      7,
+      14,
+      30
+    ],
+    "conditions": [
+      "censored",
+      "partial",
+      "seasonality",
+      "drift",
+      "late_arrival"
+    ],
+    "invoice_ids": [
+      "INV-2026-0001",
+      "INV-2026-0002",
+      "INV-2026-0003",
+      "INV-2026-0004",
+      "INV-2026-0005",
+      "INV-2026-0006",
+      "INV-2026-0007",
+      "INV-2026-0008",
+      "INV-2026-0009",
+      "INV-2026-0010",
+      "INV-2026-0011",
+      "INV-2026-0012",
+      "INV-2026-0013",
+      "INV-2026-0014",
+      "INV-2026-0015",
+      "INV-2026-0016",
+      "INV-2026-0017",
+      "INV-2026-0018",
+      "INV-2026-0019",
+      "INV-2026-0020",
+      "INV-2026-0021",
+      "INV-2026-0022",
+      "INV-2026-0023",
+      "INV-2026-0024",
+      "INV-2026-0025",
+      "INV-2026-0026",
+      "INV-2026-0027",
+      "INV-2026-0028",
+      "INV-2026-0029",
+      "INV-2026-0030",
+      "INV-2026-0031",
+      "INV-2026-0032",
+      "INV-2026-0033",
+      "INV-2026-0034",
+      "INV-2026-0035",
+      "INV-2026-0036",
+      "INV-2026-0037",
+      "INV-2026-0038",
+      "INV-2026-0039",
+      "INV-2026-0040",
+      "INV-2026-0041",
+      "INV-2026-0042",
+      "INV-2026-0043",
+      "INV-2026-0044",
+      "INV-2026-0045",
+      "INV-2026-0046",
+      "INV-2026-0047",
+      "INV-2026-0048",
+      "INV-2026-0049",
+      "INV-2026-0050",
+      "INV-2026-0051",
+      "INV-2026-0052",
+      "INV-2026-0053",
+      "INV-2026-0054",
+      "INV-2026-0055",
+      "INV-2026-0056",
+      "INV-2026-0057",
+      "INV-2026-0058",
+      "INV-2026-0059",
+      "INV-2026-0060",
+      "INV-2026-0061",
+      "INV-2026-0062",
+      "INV-2026-0063",
+      "INV-2026-0064",
+      "INV-2026-0065",
+      "INV-2026-0066",
+      "INV-2026-0067",
+      "INV-2026-0068",
+      "INV-2026-0069",
+      "INV-2026-0070",
+      "INV-2026-0071",
+      "INV-2026-0072",
+      "INV-2026-0073",
+      "INV-2026-0074",
+      "INV-2026-0075",
+      "INV-2026-0076",
+      "INV-2026-0077",
+      "INV-2026-0078",
+      "INV-2026-0079",
+      "INV-2026-0080",
+      "INV-2026-0081",
+      "INV-2026-0082",
+      "INV-2026-0083",
+      "INV-2026-0084",
+      "INV-2026-0085",
+      "INV-2026-0086",
+      "INV-2026-0087",
+      "INV-2026-0088",
+      "INV-2026-0089",
+      "INV-2026-0090",
+      "INV-2026-0091",
+      "INV-2026-0092",
+      "INV-2026-0093",
+      "INV-2026-0094",
+      "INV-2026-0095",
+      "INV-2026-0096",
+      "INV-2026-0097",
+      "INV-2026-0098",
+      "INV-2026-0099",
+      "INV-2026-0100"
+    ]
+  },
+  "behavior_profiles": [
+    "new_sparse",
+    "consistent",
+    "variable",
+    "dispute_heavy",
+    "promise_broken"
+  ],
+  "benchmark": {
+    "managers": [
+      "manager-a",
+      "manager-b",
+      "manager-small-cohort"
+    ],
+    "portfolio_mix": [
+      "current",
+      "aged",
+      "disputed"
+    ],
+    "reassignment": true,
+    "minimum_cohort_suppression": true
+  }
+}

@@ -18,6 +18,8 @@ class Settings(BaseSettings):
     oidc_jwks_uri: str | None = None
     dev_auth_enabled: bool = True
     llm_default_provider: str = "fake"
+    automation_global_kill_switch: bool = True
+    automation_external_delivery_enabled: bool = False
     upload_max_bytes: int = Field(default=26_214_400, gt=0)
     upload_max_pages: int = Field(default=100, gt=0)
 

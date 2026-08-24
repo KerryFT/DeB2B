@@ -1,8 +1,14 @@
 # AR Operations Agent
 
-Evidence-first MVP for B2B accounts-receivable operations. The deterministic core owns money,
+V2 adds point-in-time probability-to-pay, probabilistic cash flow, dispute root-cause analytics,
+customer behavior, evidence-backed escalation recommendations, privacy-aware team benchmarks and
+safe low-risk email automation infrastructure. Automation is disabled with kill switches on by
+default; the local demo does not send external email. See `docs/V2_OPERATIONS.md`.
+
+Evidence-first V1 for B2B accounts-receivable operations. The deterministic core owns money,
 dates and state; document AI and provider-neutral LLM adapters produce reviewable proposals;
-Temporal provides durable orchestration; a human approves every Gmail draft.
+Temporal provides durable orchestration; a human approves every Gmail/Outlook draft and Zalo
+notification. MISA is read-only and every external connector defaults to sandbox/dry-run.
 
 ## Development
 
@@ -13,3 +19,10 @@ Temporal provides durable orchestration; a human approves every Gmail draft.
 
 The offline demo uses fake Gmail and LLM adapters and never sends email.
 
+## V1 capabilities
+
+V1 adds tenant-scoped MISA incremental sync, Outlook delta/webhook/draft support, controlled Zalo
+OA previews, advanced bank allocation/reversal rules, versioned customer payment rules, safe bulk
+approval, deterministic aging forecasts, permission-based RBAC, and redacted LLM cost/quality
+analytics. Automated tests use fake connectors and require no external credential. See
+`docs/V1_OPERATIONS.md` for sandbox opt-in and the release checklist.
