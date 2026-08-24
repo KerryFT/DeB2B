@@ -1,0 +1,43 @@
+{
+  "artifact_version": "v2-baselines-v1",
+  "cashflow_30_day": {
+    "aggregate_wape": 0.020979,
+    "bias": -0.020979,
+    "interval_coverage": 1,
+    "invoice_wape": 0.538461,
+    "reconciliation_difference_minor": 0
+  },
+  "champion": "segment-beta-baseline-v1",
+  "dataset_version": "synthetic-v3",
+  "probability_to_pay": {
+    "14": {
+      "brier_score": 0.18787,
+      "calibration_error": 0.019231,
+      "log_loss": 0.56329,
+      "positive_rate": 0.5,
+      "sample_count": 48
+    },
+    "30": {
+      "brier_score": 0.180104,
+      "calibration_error": 0.014423,
+      "log_loss": 0.536647,
+      "positive_rate": 0.6875,
+      "sample_count": 48
+    },
+    "7": {
+      "brier_score": 0.172337,
+      "calibration_error": 0.01923,
+      "log_loss": 0.520953,
+      "positive_rate": 0.25,
+      "sample_count": 48
+    }
+  },
+  "seed": 20260824,
+  "split": {
+    "observation_days": 45,
+    "test_samples": 48,
+    "test_start": "2025-07-01",
+    "train_samples": 48,
+    "train_start": "2025-01-01"
+  }
+}

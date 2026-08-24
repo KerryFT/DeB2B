@@ -7,6 +7,7 @@ from uuid import UUID
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from backend.application.permissions import Permission, is_allowed
 from backend.infrastructure.models import Approval
 
 
@@ -23,8 +24,8 @@ def approve_content(
     role: str,
     current_content: str,
 ) -> Approval:
-    if role not in {"approver", "admin"}:
-        raise PermissionError("approver role required")
+    if not is_allowed(role, Permission.APPROVAL_SINGLE):
+        raise PermissionError("approval permission required")
     approval = session.scalar(
         select(Approval).where(Approval.tenant_id == tenant_id, Approval.id == approval_id)
     )

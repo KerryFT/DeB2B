@@ -62,7 +62,7 @@ export default function Imports() {
             {state === "loading" ? "Đang kiểm tra…" : "Xem trước"}
           </button>
           {preview && preview.invalid.length === 0 && (
-            <button className="button secondary" onClick={(event) => submit(event, "commit")}>
+            <button type="button" className="button secondary" onClick={(event) => submit(event, "commit")}>
               Commit an toàn
             </button>
           )}

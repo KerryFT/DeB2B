@@ -69,6 +69,7 @@ def upsert_invoice_rows(
                 outstanding_minor=outstanding.minor_units,
                 currency=amount.currency,
                 source_fingerprint=row.fingerprint(),
+                account_owner=row.account_owner,
             )
             session.add(invoice)
             session.flush()
@@ -99,5 +100,6 @@ def upsert_invoice_rows(
             invoice.due_date = row.due_date
             invoice.amount_minor = amount.minor_units
             invoice.outstanding_minor = outstanding.minor_units
+            invoice.account_owner = row.account_owner
             updated_count += 1
     return ImportResult(customer_count, invoice_count, updated_count, case_count)
