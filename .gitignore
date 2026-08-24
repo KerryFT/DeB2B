@@ -12,6 +12,7 @@ pytest-cache-files-*/
 .coverage
 htmlcov/
 node_modules/
+.pnpm-store/
 .next/
 dist/
 coverage/

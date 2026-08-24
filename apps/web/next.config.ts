@@ -4,7 +4,9 @@ const apiOrigin = process.env.NEXT_PUBLIC_API_URL ?? "";
 const connectSource = apiOrigin ? `'self' ${apiOrigin}` : "'self'";
 
 const config: NextConfig = {
-  output: "standalone",
+  // Vercel supplies its own Next.js build adapter. Next 16.3 currently cannot combine that
+  // adapter with standalone output; self-hosted Docker builds still need standalone.
+  output: process.env.VERCEL ? undefined : "standalone",
   poweredByHeader: false,
   experimental: { typedEnv: true },
   async headers() {
