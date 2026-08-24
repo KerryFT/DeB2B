@@ -5,6 +5,8 @@
 __pycache__/
 *.py[cod]
 .pytest_cache/
+.tmp/
+pytest-cache-files-*/
 .mypy_cache/
 .ruff_cache/
 .coverage
@@ -20,4 +22,4 @@ storage-data/
 postgres-data/
 temporal-data/
 *.log
-
+*.tsbuildinfo

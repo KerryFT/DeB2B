@@ -1,20 +1,15 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { apiBase, apiHeaders } from "../lib/api";
 
-const api = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
-const headers = {
-  "x-dev-user-id": "00000000-0000-0000-0000-000000000002",
-  "x-dev-tenant-id": "00000000-0000-0000-0000-000000000001",
-  "x-dev-role": "ar_manager",
-};
 
 export default function V2DataPage({ title, eyebrow, description, endpoint }: { title: string; eyebrow: string; description: string; endpoint: string }) {
   const [data, setData] = useState<Record<string, unknown>>();
   const [error, setError] = useState("");
   useEffect(() => {
     const controller = new AbortController();
-    fetch(`${api}${endpoint}`, { headers, signal: controller.signal }).then(async (response) => {
+    fetch(`${apiBase}${endpoint}`, { headers: apiHeaders("ar_manager"), credentials: "include", signal: controller.signal }).then(async (response) => {
       if (!response.ok) throw new Error(`API ${response.status}`);
       setData(await response.json());
     }).catch((reason: unknown) => {

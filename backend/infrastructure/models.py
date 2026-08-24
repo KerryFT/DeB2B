@@ -60,6 +60,20 @@ class Membership(Base, TenantOwned):
     __table_args__ = (UniqueConstraint("tenant_id", "user_id"),)
 
 
+class PortfolioSession(Base):
+    __tablename__ = "portfolio_sessions"
+    id: Mapped[UUID] = uuid_pk()
+    token_hash: Mapped[str] = mapped_column(String(64), unique=True)
+    csrf_hash: Mapped[str] = mapped_column(String(64))
+    tenant_id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), ForeignKey("tenants.id"))
+    user_id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), ForeignKey("users.id"))
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(UTC)
+    )
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
 class Customer(Base, TenantOwned):
     __tablename__ = "customers"
     id: Mapped[UUID] = uuid_pk()
@@ -196,7 +210,7 @@ class ConnectorCursor(Base, TenantOwned):
     id: Mapped[UUID] = uuid_pk()
     provider: Mapped[str] = mapped_column(String(30))
     account: Mapped[str] = mapped_column(String(320))
-    cursor: Mapped[str | None] = mapped_column(String(300))
+    cursor: Mapped[str | None] = mapped_column(Text)
     last_sync_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     watch_expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     status: Mapped[str] = mapped_column(String(30), default="INITIAL_SYNC")

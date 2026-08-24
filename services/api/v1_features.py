@@ -1,31 +1,44 @@
 from __future__ import annotations
 
-from datetime import UTC, date, datetime, time
+import json
+from datetime import UTC, date, datetime, time, timedelta
 from decimal import Decimal
 from typing import Annotated
 from uuid import UUID
 
+import httpx
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 
-from backend.application.approvals import approve_content
+from backend.application.approvals import approve_content, content_hash
 from backend.application.bulk_approvals import BulkItem, preview_bulk
+from backend.application.draft_effect import create_approved_draft
 from backend.application.llm_analytics import LLMEvent, PricingVersion, aggregate_online
 from backend.application.permissions import Permission, permissions_for_role
+from backend.application.ports import DraftSpec
 from backend.application.v1_connectors import (
+    RetryableConnectorError,
     ZaloRecipient,
     ZaloTemplate,
+    normalize_outlook_message,
     preview_zalo_notification,
+    sync_outlook,
 )
 from backend.domain.aging_forecast import ForecastInvoice, baseline_forecast, cashflow_buckets
 from backend.domain.payment_rules import RuleDefinition, detect_conflicts, evaluate_rules
+from backend.infrastructure.config import get_settings
 from backend.infrastructure.database import tenant_session
+from backend.infrastructure.http_connectors import MicrosoftGraphMailAdapter
+from backend.infrastructure.microsoft_tokens import outlook_access_token
 from backend.infrastructure.models import (
     Approval,
     BulkApprovalBatch,
     BulkApprovalItem,
+    Communication,
     ConnectorConfig,
+    ConnectorCredential,
+    ConnectorCursor,
     Customer,
     Invoice,
     LLMPricing,
@@ -37,6 +50,21 @@ from backend.infrastructure.models import (
 from services.api.auth import Actor, current_actor, require_permission
 
 router = APIRouter(prefix="/api/v1")
+
+
+def _outlook_draft_content(request: OutlookDraftRequest) -> str:
+    return json.dumps(
+        {
+            "case_id": str(request.case_id),
+            "to": list(request.to),
+            "cc": list(request.cc),
+            "subject": request.subject,
+            "body": request.body,
+        },
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+    )
 
 
 @router.get("/permissions")
@@ -160,9 +188,214 @@ async def retry_connector(
 async def outlook_webhook_validation(
     validationToken: Annotated[str | None, Query()] = None,
 ) -> Response:  # noqa: N803
+    if not get_settings().outlook_webhook_enabled:
+        raise HTTPException(404, "Outlook webhook notifications are disabled")
     if validationToken is not None:
         return Response(validationToken, media_type="text/plain")
-    return Response(status_code=202)
+    # Notification processing is intentionally disabled until signature/client-state
+    # verification and durable inbox enqueueing are configured.
+    raise HTTPException(503, "Outlook webhook notifications are not enabled")
+
+
+def _outlook_account(tenant_id: UUID) -> str:
+    with tenant_session(tenant_id) as session:
+        credential = session.scalar(
+            select(ConnectorCredential).where(
+                ConnectorCredential.tenant_id == tenant_id,
+                ConnectorCredential.provider == "outlook",
+                ConnectorCredential.status == "CONNECTED",
+            )
+        )
+        if credential is None:
+            raise HTTPException(409, "Outlook is not connected")
+        return credential.account
+
+
+@router.post("/connectors/outlook/sync")
+async def outlook_manual_sync(
+    actor: Annotated[Actor, Depends(require_permission(Permission.CONNECTOR_MANAGE))],
+) -> dict[str, object]:
+    settings = get_settings()
+    if not settings.outlook_sync_enabled:
+        raise HTTPException(404, "Outlook sync is disabled")
+    account = _outlook_account(actor.tenant_id)
+    try:
+        access_token = await outlook_access_token(
+            settings, tenant_id=str(actor.tenant_id), account=account
+        )
+        with tenant_session(actor.tenant_id) as session:
+            cursor_record = session.scalar(
+                select(ConnectorCursor).where(
+                    ConnectorCursor.tenant_id == actor.tenant_id,
+                    ConnectorCursor.provider == "outlook",
+                    ConnectorCursor.account == account,
+                )
+            )
+            delta_link = cursor_record.cursor if cursor_record else None
+        async with httpx.AsyncClient() as client:
+            adapter = MicrosoftGraphMailAdapter(
+                client=client,
+                mailbox="me",
+                folder_id="inbox",
+                token_provider=lambda: _constant_token(access_token),
+                allowed_recipients=settings.allowed_portfolio_emails,
+            )
+            result = await sync_outlook(adapter, delta_link=delta_link)
+    except (PermissionError, httpx.HTTPError, ValueError, RetryableConnectorError) as exc:
+        raise HTTPException(503, "Outlook sync is temporarily unavailable") from exc
+    created = duplicates = 0
+    with tenant_session(actor.tenant_id) as session:
+        for message in result.messages:
+            normalized = normalize_outlook_message(message)
+            existing = session.scalar(
+                select(Communication).where(
+                    Communication.tenant_id == actor.tenant_id,
+                    Communication.provider == "outlook",
+                    Communication.external_id == normalized["external_id"],
+                )
+            )
+            if existing is not None:
+                duplicates += 1
+                continue
+            session.add(
+                Communication(
+                    tenant_id=actor.tenant_id,
+                    provider="outlook",
+                    external_id=str(normalized["external_id"]),
+                    thread_id=str(normalized["thread_id"]),
+                    direction="INBOUND",
+                    sender=str(normalized["sender"])[:320],
+                    recipients=list(normalized["recipients"]),
+                    subject=str(normalized["subject"])[:500],
+                    body=str(normalized["body"])[:50_000],
+                    received_at=message.received_at,
+                )
+            )
+            created += 1
+        cursor_record = session.scalar(
+            select(ConnectorCursor).where(
+                ConnectorCursor.tenant_id == actor.tenant_id,
+                ConnectorCursor.provider == "outlook",
+                ConnectorCursor.account == account,
+            )
+        )
+        if cursor_record is None:
+            cursor_record = ConnectorCursor(
+                tenant_id=actor.tenant_id,
+                provider="outlook",
+                account=account,
+                cursor=result.delta_link,
+                last_sync_at=datetime.now(UTC),
+                status="SYNCED",
+            )
+            session.add(cursor_record)
+        else:
+            cursor_record.cursor = result.delta_link
+            cursor_record.last_sync_at = datetime.now(UTC)
+            cursor_record.status = "SYNCED"
+    return {"created": created, "duplicates": duplicates, "mode": "manual-delta"}
+
+
+async def _constant_token(token: str) -> str:
+    return token
+
+
+class OutlookDraftRequest(BaseModel):
+    case_id: UUID
+    to: tuple[str, ...] = Field(min_length=1, max_length=5)
+    cc: tuple[str, ...] = Field(default=(), max_length=5)
+    subject: str = Field(min_length=1, max_length=300)
+    body: str = Field(min_length=1, max_length=20_000)
+
+
+@router.post("/connectors/outlook/drafts/preview")
+async def outlook_draft_preview(
+    request: OutlookDraftRequest,
+    actor: Annotated[Actor, Depends(require_permission(Permission.APPROVAL_SINGLE))],
+) -> dict[str, str]:
+    settings = get_settings()
+    if not settings.outlook_draft_enabled:
+        raise HTTPException(404, "Outlook draft creation is disabled")
+    recipients = {item.casefold() for item in (*request.to, *request.cc)}
+    if not recipients <= settings.allowed_portfolio_emails:
+        raise HTTPException(403, "portfolio drafts are restricted to the configured allowlist")
+    canonical = _outlook_draft_content(request)
+    with tenant_session(actor.tenant_id) as session:
+        case = session.scalar(
+            select(PaymentCase).where(
+                PaymentCase.tenant_id == actor.tenant_id,
+                PaymentCase.id == request.case_id,
+            )
+        )
+        if case is None:
+            raise HTTPException(404, "case not found")
+        approval = Approval(
+            tenant_id=actor.tenant_id,
+            case_id=request.case_id,
+            content_hash=content_hash(canonical),
+            status="PENDING",
+            expires_at=datetime.now(UTC) + timedelta(minutes=15),
+        )
+        session.add(approval)
+        session.flush()
+        return {"approval_id": str(approval.id), "content": canonical, "status": "PENDING"}
+
+
+class OutlookDraftCommitRequest(OutlookDraftRequest):
+    approval_id: UUID
+    idempotency_key: str = Field(min_length=12, max_length=300)
+
+
+@router.post("/connectors/outlook/drafts/create")
+async def outlook_draft_create(
+    request: OutlookDraftCommitRequest,
+    actor: Annotated[Actor, Depends(require_permission(Permission.APPROVAL_SINGLE))],
+) -> dict[str, str]:
+    settings = get_settings()
+    if not settings.outlook_draft_enabled or settings.outlook_send_enabled:
+        raise HTTPException(404, "Outlook draft creation is disabled")
+    recipients = {item.casefold() for item in (*request.to, *request.cc)}
+    if not recipients <= settings.allowed_portfolio_emails:
+        raise HTTPException(403, "portfolio drafts are restricted to the configured allowlist")
+    canonical = _outlook_draft_content(request)
+    account = _outlook_account(actor.tenant_id)
+    try:
+        access_token = await outlook_access_token(
+            settings, tenant_id=str(actor.tenant_id), account=account
+        )
+        async with httpx.AsyncClient() as client:
+            adapter = MicrosoftGraphMailAdapter(
+                client=client,
+                mailbox="me",
+                folder_id="inbox",
+                token_provider=lambda: _constant_token(access_token),
+                allowed_recipients=settings.allowed_portfolio_emails,
+            )
+            with tenant_session(actor.tenant_id) as session:
+                approval = session.scalar(
+                    select(Approval).where(
+                        Approval.tenant_id == actor.tenant_id,
+                        Approval.id == request.approval_id,
+                    )
+                )
+                if approval is None:
+                    raise HTTPException(404, "approval not found")
+                if approval.content_hash != content_hash(canonical):
+                    raise HTTPException(409, "draft content changed after approval")
+                try:
+                    action = await create_approved_draft(
+                        session,
+                        approval=approval,
+                        idempotency_key=request.idempotency_key,
+                        spec=DraftSpec(request.to, request.cc, request.subject, request.body),
+                        gmail=adapter,
+                        event_topic="outlook.draft.created.v1",
+                    )
+                except PermissionError as exc:
+                    raise HTTPException(409, str(exc)) from exc
+    except (PermissionError, httpx.HTTPError, ValueError, RetryableConnectorError) as exc:
+        raise HTTPException(503, "Outlook draft creation is temporarily unavailable") from exc
+    return {"draft_action_id": str(action.id), "status": action.status}
 
 
 class ZaloPreviewRequest(BaseModel):

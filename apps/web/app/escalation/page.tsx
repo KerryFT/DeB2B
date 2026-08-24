@@ -1,20 +1,20 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { apiBase, apiHeaders } from "../lib/api";
 
-const api = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
-const headers = { "x-dev-user-id": "00000000-0000-0000-0000-000000000002", "x-dev-tenant-id": "00000000-0000-0000-0000-000000000001", "x-dev-role": "ar_manager" };
 
 export default function EscalationPage() {
   const [data, setData] = useState<Record<string, unknown>>();
   const [message, setMessage] = useState("Đang tìm case demo…");
   useEffect(() => {
     const controller = new AbortController();
-    fetch(`${api}/api/v1/cases`, { headers, signal: controller.signal })
+    const headers = apiHeaders("ar_manager");
+    fetch(`${apiBase}/api/v1/cases`, { headers, credentials: "include", signal: controller.signal })
       .then(async response => { if (!response.ok) throw new Error(`API ${response.status}`); return response.json(); })
       .then(async (cases: Array<{ id: string }>) => {
         if (!cases.length) { setMessage("Chưa có case. Hãy chạy seed demo."); return; }
-        const response = await fetch(`${api}/api/v2/escalation/${cases[0].id}/generate`, { method: "POST", headers, signal: controller.signal });
+        const response = await fetch(`${apiBase}/api/v2/escalation/${cases[0].id}/generate`, { method: "POST", headers, credentials: "include", signal: controller.signal });
         if (!response.ok) throw new Error(`API ${response.status}`);
         setData(await response.json()); setMessage("");
       }).catch((reason: unknown) => {

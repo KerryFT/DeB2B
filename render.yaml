@@ -1,0 +1,72 @@
+services:
+  - type: web
+    name: deb2b-api
+    runtime: docker
+    plan: free
+    dockerfilePath: ./services/api/Dockerfile
+    dockerContext: .
+    healthCheckPath: /live
+    autoDeployTrigger: commit
+    envVars:
+      - key: APP_ENV
+        value: portfolio
+      - key: APP_NAME
+        value: DeB2B AR Operations Agent
+      - key: API_BASE_URL
+        value: https://api.deb2b.id.vn
+      - key: WEB_BASE_URL
+        value: https://app.deb2b.id.vn
+      - key: CORS_ALLOWED_ORIGINS
+        value: https://app.deb2b.id.vn
+      - key: TRUSTED_HOSTS
+        value: api.deb2b.id.vn
+      - key: DEV_AUTH_ENABLED
+        value: "false"
+      - key: DOCUMENT_UPLOAD_ENABLED
+        value: "false"
+      - key: TEMPORAL_ENABLED
+        value: "false"
+      - key: MISA_API_ENABLED
+        value: "false"
+      - key: MISA_IMPORT_ENABLED
+        value: "true"
+      - key: OUTLOOK_SYNC_ENABLED
+        value: "true"
+      - key: OUTLOOK_WEBHOOK_ENABLED
+        value: "false"
+      - key: OUTLOOK_DRAFT_ENABLED
+        value: "true"
+      - key: OUTLOOK_SEND_ENABLED
+        value: "false"
+      - key: LLM_DEFAULT_PROVIDER
+        value: fake
+      - key: AUTOMATION_GLOBAL_KILL_SWITCH
+        value: "true"
+      - key: AUTOMATION_EXTERNAL_DELIVERY_ENABLED
+        value: "false"
+      - key: MICROSOFT_TENANT
+        value: common
+      - key: SESSION_TTL_MINUTES
+        value: "60"
+      - key: DATABASE_URL
+        sync: false
+      - key: OIDC_ISSUER
+        sync: false
+      - key: OIDC_AUDIENCE
+        sync: false
+      - key: OIDC_JWKS_URI
+        sync: false
+      - key: MICROSOFT_CLIENT_ID
+        sync: false
+      - key: MICROSOFT_CLIENT_SECRET
+        sync: false
+      - key: MICROSOFT_REDIRECT_URI
+        sync: false
+      - key: PORTFOLIO_ALLOWED_EMAILS
+        sync: false
+      - key: APP_ENCRYPTION_KEY
+        sync: false
+      - key: SESSION_SECRET
+        sync: false
+      - key: METRICS_BEARER_TOKEN
+        sync: false

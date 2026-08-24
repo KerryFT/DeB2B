@@ -19,6 +19,13 @@ notification. MISA is read-only and every external connector defaults to sandbox
 
 The offline demo uses fake Gmail and LLM adapters and never sends email.
 
+## Portfolio deployment
+
+The zero-cost portfolio profile uses Next.js/Vercel, FastAPI/Render and PostgreSQL/Neon. It enables
+MISA-compatible CSV/XLSX import plus Microsoft OAuth, manual Outlook delta sync and allowlisted
+draft creation after human approval. Upload/OCR, Temporal, MISA API, Outlook webhooks and email send
+are fail-closed. See `docs/PORTFOLIO_DEPLOYMENT.md`; this profile is not a full production release.
+
 ## V1 capabilities
 
 V1 adds tenant-scoped MISA incremental sync, Outlook delta/webhook/draft support, controlled Zalo

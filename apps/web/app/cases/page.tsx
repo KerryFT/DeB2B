@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
+import { apiBase, apiHeaders } from "../lib/api";
 
 type CaseRow = {
   id: string;
@@ -17,13 +18,7 @@ export default function Cases() {
   const [status, setStatus] = useState<"loading" | "ready" | "error">("loading");
 
   useEffect(() => {
-    const api = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
-    fetch(`${api}/api/v1/cases`, {
-      headers: {
-        "x-dev-user-id": "00000000-0000-0000-0000-000000000002",
-        "x-dev-tenant-id": "00000000-0000-0000-0000-000000000001",
-      },
-    })
+    fetch(`${apiBase}/api/v1/cases`, { headers: apiHeaders(), credentials: "include" })
       .then(async (response) => {
         if (!response.ok) throw new Error("API unavailable");
         setRows(await response.json());

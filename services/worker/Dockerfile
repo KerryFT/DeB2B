@@ -5,10 +5,7 @@ COPY pyproject.toml uv.lock ./
 RUN uv sync --frozen --no-dev --no-install-project
 COPY backend backend
 COPY services services
-COPY alembic.ini ./
-COPY migrations migrations
 RUN uv sync --frozen --no-dev
 ENV UV_CACHE_DIR=/tmp/uv-cache
 USER 65532:65532
-EXPOSE 8000
-CMD ["sh", "-c", "uv run --no-sync alembic upgrade head && exec uv run --no-sync uvicorn services.api.main:app --host 0.0.0.0 --port ${PORT:-8000}"]
+CMD ["uv", "run", "--no-sync", "python", "-m", "services.worker.main"]
