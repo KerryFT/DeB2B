@@ -1,4 +1,14 @@
-export const apiBase = process.env.NEXT_PUBLIC_API_URL ?? "";
+const productionApiBase = "https://api.deb2b.id.vn";
+
+export function resolveApiBase(configured: string | undefined, environment: string | undefined) {
+  const value = configured?.trim() || (environment === "production" ? productionApiBase : "http://localhost:8000");
+  return value.replace(/\/+$/, "");
+}
+
+export const apiBase = resolveApiBase(
+  process.env.NEXT_PUBLIC_API_URL,
+  process.env.NODE_ENV,
+);
 
 function csrfToken(): string | undefined {
   if (typeof document === "undefined") return undefined;
