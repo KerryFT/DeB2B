@@ -36,7 +36,11 @@ class Settings(BaseSettings):
     clamav_host: str | None = "localhost"
     clamav_port: int = Field(default=3310, ge=1, le=65535)
     metrics_bearer_token: str | None = None
-    llm_default_provider: str = "fake"
+    llm_default_provider: Literal["fake", "gemini", "openai", "anthropic"] = "fake"
+    gemini_api_key: str | None = None
+    gemini_model_fast: str = "gemini-3.5-flash-lite"
+    gemini_model_reasoning: str = "gemini-3.7-flash"
+    llm_timeout_seconds: float = Field(default=20, ge=5, le=120)
     automation_global_kill_switch: bool = True
     automation_external_delivery_enabled: bool = False
     document_upload_enabled: bool = True
@@ -78,6 +82,7 @@ class Settings(BaseSettings):
         "s3_server_side_encryption",
         "clamav_host",
         "metrics_bearer_token",
+        "gemini_api_key",
         "microsoft_client_id",
         "microsoft_client_secret",
         "microsoft_redirect_uri",
@@ -162,6 +167,8 @@ class Settings(BaseSettings):
                 raise ValueError(
                     "initial deployed release requires external delivery off and global kill on"
                 )
+            if self.llm_default_provider == "gemini" and not self.gemini_api_key:
+                raise ValueError("GEMINI_API_KEY is required when LLM_DEFAULT_PROVIDER=gemini")
 
         if self.app_env == "portfolio":
             portfolio_required = {

@@ -30,7 +30,7 @@ export default function Cases() {
   return <>
     <div className="eyebrow">Operations queue</div><h1>Payment cases</h1>
     <div className="card">
-      <div className="actions"><Link className="button" href="/imports">Import công nợ</Link><button className="button secondary">Lọc blocker</button></div>
+      <div className="actions"><Link className="button" href="/imports">Import công nợ</Link><Link className="button secondary" href="/agent">Phân tích bằng AI Agent</Link></div>
       {status === "loading" && <p aria-live="polite">Đang tải case…</p>}
       {status === "error" && <p role="alert">Không thể tải API. Dữ liệu hiện tại có thể đã cũ.</p>}
       {status === "ready" && rows.length === 0 && <p className="muted">Chưa có case. Hãy import fixture smoke.</p>}

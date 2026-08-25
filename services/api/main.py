@@ -52,6 +52,7 @@ from backend.infrastructure.models import (
     PaymentCase,
 )
 from backend.infrastructure.runtime import build_document_dependencies
+from services.api.ai_features import router as ai_features_router
 from services.api.auth import Actor, current_actor, require_permission, validate_session_csrf
 from services.api.microsoft_auth import router as microsoft_auth_router
 from services.api.v1_features import router as v1_features_router
@@ -70,6 +71,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
 
 app = FastAPI(title=settings.app_name, version="1.0.0", lifespan=lifespan)
+app.include_router(ai_features_router)
 app.include_router(v1_features_router)
 app.include_router(v2_features_router)
 app.include_router(microsoft_auth_router)
@@ -376,6 +378,73 @@ async def case_detail(
         }
 
 
+@app.get("/api/v1/approvals")
+async def list_approvals(
+    actor: Annotated[Actor, Depends(require_permission(Permission.CASE_VIEW))],
+) -> list[dict[str, object]]:
+    """Return review-safe approval metadata without persisting email content."""
+    with tenant_session(actor.tenant_id) as session:
+        approvals = session.scalars(
+            select(Approval)
+            .where(Approval.tenant_id == actor.tenant_id)
+            .order_by(Approval.expires_at)
+            .limit(100)
+        ).all()
+        result: list[dict[str, object]] = []
+        for approval in approvals:
+            case = session.scalar(
+                select(PaymentCase).where(
+                    PaymentCase.tenant_id == actor.tenant_id,
+                    PaymentCase.id == approval.case_id,
+                )
+            )
+            invoice_row = session.execute(
+                select(Invoice, Customer)
+                .join(CaseInvoice, CaseInvoice.invoice_id == Invoice.id)
+                .join(Customer, Customer.id == Invoice.customer_id)
+                .where(
+                    CaseInvoice.tenant_id == actor.tenant_id,
+                    CaseInvoice.case_id == approval.case_id,
+                )
+                .order_by(Invoice.due_date)
+                .limit(1)
+            ).first()
+            active_blockers = session.scalar(
+                select(func.count(Blocker.id)).where(
+                    Blocker.tenant_id == actor.tenant_id,
+                    Blocker.case_id == approval.case_id,
+                    Blocker.active.is_(True),
+                )
+            ) or 0
+            evidence_count = session.scalar(
+                select(func.count(EvidenceSpan.id))
+                .join(CaseDocument, CaseDocument.document_id == EvidenceSpan.document_id)
+                .where(
+                    CaseDocument.tenant_id == actor.tenant_id,
+                    CaseDocument.case_id == approval.case_id,
+                )
+            ) or 0
+            invoice, customer = invoice_row if invoice_row else (None, None)
+            result.append(
+                {
+                    "id": str(approval.id),
+                    "status": approval.status,
+                    "expires_at": approval.expires_at.isoformat(),
+                    "case_id": str(approval.case_id),
+                    "case_status": case.status if case else "UNKNOWN",
+                    "case_version": case.version if case else 1,
+                    "invoice_number": invoice.invoice_number if invoice else "—",
+                    "customer": customer.name if customer else "Chưa xác định",
+                    "outstanding_minor": invoice.outstanding_minor if invoice else 0,
+                    "currency": invoice.currency if invoice else "VND",
+                    "due_date": invoice.due_date.isoformat() if invoice else None,
+                    "active_blockers": active_blockers,
+                    "evidence_count": evidence_count,
+                }
+            )
+        return result
+
+
 class ApprovalDecision(BaseModel):
     content: str
 
@@ -400,6 +469,47 @@ async def approve(
             raise HTTPException(404, str(exc)) from exc
         except (PermissionError, ValueError) as exc:
             raise HTTPException(409, str(exc)) from exc
+        return {"id": str(approval.id), "status": approval.status}
+
+
+class ApprovalRejection(BaseModel):
+    reason: str
+
+
+@app.post("/api/v1/approvals/{approval_id}/reject")
+async def reject_approval(
+    approval_id: UUID,
+    decision: ApprovalRejection,
+    actor: Annotated[Actor, Depends(require_permission(Permission.APPROVAL_SINGLE))],
+) -> dict[str, str]:
+    reason = decision.reason.strip()
+    if len(reason) < 3:
+        raise HTTPException(422, "rejection reason is required")
+    with tenant_session(actor.tenant_id) as session:
+        approval = session.scalar(
+            select(Approval).where(
+                Approval.tenant_id == actor.tenant_id,
+                Approval.id == approval_id,
+            )
+        )
+        if approval is None:
+            raise HTTPException(404, "approval not found")
+        if approval.status != "PENDING":
+            raise HTTPException(409, "approval is no longer pending")
+        approval.status = "REJECTED"
+        approval.decided_by = actor.user_id
+        session.add(
+            AuditEntry(
+                tenant_id=actor.tenant_id,
+                aggregate_id=approval.case_id,
+                actor_type="user",
+                actor_id=str(actor.user_id),
+                action="approval.rejected",
+                aggregate_type="payment_case",
+                correlation_id=f"approval-reject:{approval.id}",
+                payload={"approval_id": str(approval.id), "reason": reason[:500]},
+            )
+        )
         return {"id": str(approval.id), "status": approval.status}
 
 

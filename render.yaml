@@ -39,7 +39,15 @@ services:
       - key: OUTLOOK_SEND_ENABLED
         value: "false"
       - key: LLM_DEFAULT_PROVIDER
-        value: fake
+        value: gemini
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: GEMINI_MODEL_FAST
+        value: gemini-3.5-flash-lite
+      - key: GEMINI_MODEL_REASONING
+        value: gemini-3.7-flash
+      - key: LLM_TIMEOUT_SECONDS
+        value: "20"
       - key: AUTOMATION_GLOBAL_KILL_SWITCH
         value: "true"
       - key: AUTOMATION_EXTERNAL_DELIVERY_ENABLED

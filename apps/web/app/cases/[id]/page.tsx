@@ -1,6 +1,7 @@
 "use client";
 
 import { use, useEffect, useState } from "react";
+import Link from "next/link";
 import { apiBase, apiFetch, apiHeaders } from "../../lib/api";
 
 type Detail = {
@@ -43,8 +44,22 @@ export default function CaseDetail({ params }: { params: Promise<{ id: string }>
       return;
     }
     setDraftApproval(result);
+    try {
+      const storageKey = "deb2b-draft-approvals";
+      const stored = JSON.parse(sessionStorage.getItem(storageKey) ?? "{}");
+      stored[result.approval_id] = {
+        approval_id: result.approval_id,
+        content: result.content,
+        case_id: id,
+        to: [draftTo],
+        cc: [],
+        subject: draftSubject,
+        body: draftBody,
+      };
+      sessionStorage.setItem(storageKey, JSON.stringify(stored));
+    } catch { /* The approval still exists; only the cross-page preview is unavailable. */ }
     setDraftConfirmed(false);
-    setDraftMessage("Đã khóa nội dung để duyệt. Kiểm tra lại trước khi tạo draft Outlook.");
+    setDraftMessage("Đã khóa nội dung và đưa vào Hộp thư phê duyệt.");
   }
 
   async function approveAndCreateDraft() {
@@ -103,6 +118,7 @@ export default function CaseDetail({ params }: { params: Promise<{ id: string }>
           {draftApproval && <button className="button" disabled={!draftConfirmed} onClick={approveAndCreateDraft}>Phê duyệt & tạo draft</button>}
         </div>
         {draftApproval && <pre className="json-view">{draftApproval.content}</pre>}
+        {draftApproval && <Link className="button secondary" href="/approvals">Mở Hộp thư phê duyệt →</Link>}
         {draftMessage && <p role="status">{draftMessage}</p>}
       </section>
     </>}
