@@ -4,9 +4,12 @@ from typing import Any
 
 
 class S3ObjectStorage:
-    def __init__(self, client: Any, *, bucket: str) -> None:
+    def __init__(
+        self, client: Any, *, bucket: str, server_side_encryption: str | None = None
+    ) -> None:
         self.client = client
         self.bucket = bucket
+        self.server_side_encryption = server_side_encryption
 
     def ensure_bucket(self) -> None:
         try:
@@ -16,12 +19,18 @@ class S3ObjectStorage:
 
     async def put(self, *, tenant_id: str, key: str, content: bytes, content_type: str) -> str:
         object_key = f"{tenant_id}/{key}"
+        encryption = (
+            {"ServerSideEncryption": self.server_side_encryption}
+            if self.server_side_encryption
+            else {}
+        )
         self.client.put_object(
             Bucket=self.bucket,
             Key=object_key,
             Body=content,
             ContentType=content_type,
             Metadata={"tenant-id": tenant_id},
+            **encryption,
         )
         return object_key
 

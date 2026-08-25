@@ -1,4 +1,6 @@
 name: ci
+permissions:
+  contents: read
 on:
   pull_request:
   push:
@@ -33,10 +35,38 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: uv sync --frozen --group dev
       - run: uv run alembic upgrade head
+      - run: uv run alembic downgrade base && uv run alembic upgrade head
       - run: uv run ruff check .
       - run: uv run mypy backend services
       - run: docker compose up -d minio
       - run: curl --fail --retry 20 --retry-delay 2 http://127.0.0.1:9000/minio/health/live
-      - run: uv run pytest tests/unit tests/contract tests/integration
+      - run: uv run pytest
       - run: pnpm lint && pnpm typecheck && pnpm test && pnpm build
-      - run: uv run alembic downgrade base && uv run alembic upgrade head
+      - run: uv run alembic check
+      - run: pnpm audit --prod --audit-level high
+      - run: uvx --from pip-audit pip-audit
+      - run: docker build -f services/api/Dockerfile -t ar-api:${{ github.sha }} .
+      - run: docker build -f services/worker/Dockerfile -t ar-worker:${{ github.sha }} .
+      - run: >-
+          docker build
+          --build-arg NEXT_PUBLIC_API_URL=https://api.deb2b.id.vn
+          --build-arg NEXT_PUBLIC_DEV_AUTH_ENABLED=false
+          -f apps/web/Dockerfile -t ar-web:${{ github.sha }} .
+      - uses: aquasecurity/trivy-action@0.33.1
+        with:
+          image-ref: ar-api:${{ github.sha }}
+          severity: CRITICAL
+          ignore-unfixed: true
+          exit-code: 1
+      - uses: aquasecurity/trivy-action@0.33.1
+        with:
+          image-ref: ar-worker:${{ github.sha }}
+          severity: CRITICAL
+          ignore-unfixed: true
+          exit-code: 1
+      - uses: aquasecurity/trivy-action@0.33.1
+        with:
+          image-ref: ar-web:${{ github.sha }}
+          severity: CRITICAL
+          ignore-unfixed: true
+          exit-code: 1

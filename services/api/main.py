@@ -1,3 +1,4 @@
+import hmac
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime
@@ -6,11 +7,23 @@ from typing import Annotated
 from uuid import UUID, uuid4
 
 import structlog
-from fastapi import Depends, FastAPI, File, Form, HTTPException, Request, UploadFile
+from fastapi import (
+    Depends,
+    FastAPI,
+    File,
+    Form,
+    Header,
+    HTTPException,
+    Request,
+    Response,
+    UploadFile,
+)
 from fastapi.middleware.cors import CORSMiddleware
-from prometheus_client import Counter, Histogram, make_asgi_app
+from fastapi.responses import JSONResponse
+from prometheus_client import CONTENT_TYPE_LATEST, Counter, Histogram, generate_latest
 from pydantic import BaseModel
 from sqlalchemy import func, select, text
+from starlette.middleware.trustedhost import TrustedHostMiddleware
 
 from backend.application.approvals import approve_content
 from backend.application.bank_imports import BankPreview, preview_bank_csv, upsert_bank_rows
@@ -26,7 +39,6 @@ from backend.application.reconciliation import (
 )
 from backend.infrastructure.config import get_settings
 from backend.infrastructure.database import SessionFactory, tenant_session
-from backend.infrastructure.fakes import FakeMalwareScanner, MemoryObjectStorage
 from backend.infrastructure.models import (
     Approval,
     AuditEntry,
@@ -39,13 +51,16 @@ from backend.infrastructure.models import (
     Invoice,
     PaymentCase,
 )
-from services.api.auth import Actor, current_actor, require_permission
+from backend.infrastructure.runtime import build_document_dependencies
+from services.api.ai_features import router as ai_features_router
+from services.api.auth import Actor, current_actor, require_permission, validate_session_csrf
+from services.api.microsoft_auth import router as microsoft_auth_router
 from services.api.v1_features import router as v1_features_router
 from services.api.v2_features import router as v2_features_router
 
 logger = structlog.get_logger()
-development_storage = MemoryObjectStorage()
-development_scanner = FakeMalwareScanner()
+settings = get_settings()
+document_storage, malware_scanner = build_document_dependencies(settings)
 
 
 @asynccontextmanager
@@ -55,17 +70,23 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     yield
 
 
-app = FastAPI(title=get_settings().app_name, version="1.0.0", lifespan=lifespan)
+app = FastAPI(title=settings.app_name, version="1.0.0", lifespan=lifespan)
+app.include_router(ai_features_router)
 app.include_router(v1_features_router)
 app.include_router(v2_features_router)
+app.include_router(microsoft_auth_router)
+app.add_middleware(TrustedHostMiddleware, allowed_hosts=list(settings.allowed_hosts))
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000", "http://127.0.0.1:3000"],
-    allow_methods=["GET", "POST", "OPTIONS"],
+    allow_origins=list(settings.cors_origins)
+    or ["http://localhost:3000", "http://127.0.0.1:3000"],
+    allow_methods=["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
+    allow_credentials=True,
     allow_headers=[
         "authorization",
         "content-type",
         "x-correlation-id",
+        "x-csrf-token",
         "x-dev-role",
         "x-dev-tenant-id",
         "x-dev-user-id",
@@ -73,13 +94,30 @@ app.add_middleware(
 )
 REQUESTS = Counter("ar_http_requests_total", "HTTP requests", ["method", "path", "status"])
 LATENCY = Histogram("ar_http_request_seconds", "HTTP request latency", ["method", "path"])
-app.mount("/metrics", make_asgi_app())
+
+
+async def read_upload_limited(file: UploadFile) -> bytes:
+    content = bytearray()
+    while chunk := await file.read(1024 * 1024):
+        content.extend(chunk)
+        if len(content) > settings.upload_max_bytes:
+            raise HTTPException(413, "upload exceeds configured size limit")
+    return bytes(content)
 
 
 @app.middleware("http")
 async def request_observability(request: Request, call_next):  # type: ignore[no-untyped-def]
     correlation_id = request.headers.get("x-correlation-id", str(uuid4()))[:100]
     started = perf_counter()
+    if request.method in {"POST", "PUT", "PATCH", "DELETE"}:
+        try:
+            validate_session_csrf(request)
+        except HTTPException as exc:
+            return JSONResponse(
+                status_code=exc.status_code,
+                content={"detail": exc.detail},
+                headers={"x-correlation-id": correlation_id},
+            )
     try:
         response = await call_next(request)
     except Exception:
@@ -96,6 +134,13 @@ async def request_observability(request: Request, call_next):  # type: ignore[no
     REQUESTS.labels(request.method, path, response.status_code).inc()
     LATENCY.labels(request.method, path).observe(elapsed)
     response.headers["x-correlation-id"] = correlation_id
+    response.headers["x-content-type-options"] = "nosniff"
+    response.headers["x-frame-options"] = "DENY"
+    response.headers["referrer-policy"] = "no-referrer"
+    response.headers["permissions-policy"] = "camera=(), microphone=(), geolocation=()"
+    response.headers["cache-control"] = "no-store"
+    if settings.app_env in {"portfolio", "staging", "production"}:
+        response.headers["strict-transport-security"] = "max-age=31536000"
     logger.info(
         "request_completed",
         method=request.method,
@@ -123,6 +168,18 @@ async def ready() -> Health:
     return Health(status="ok")
 
 
+@app.get("/metrics", include_in_schema=False)
+async def metrics(authorization: Annotated[str | None, Header()] = None) -> Response:
+    expected = settings.metrics_bearer_token
+    if settings.app_env in {"portfolio", "staging", "production"} and (
+        not expected
+        or not authorization
+        or not hmac.compare_digest(authorization, f"Bearer {expected}")
+    ):
+        raise HTTPException(404, "not found")
+    return Response(generate_latest(), media_type=CONTENT_TYPE_LATEST)
+
+
 @app.get("/api/v1/me")
 async def me(actor: Annotated[Actor, Depends(current_actor)]) -> dict[str, str]:
     return {"user_id": str(actor.user_id), "tenant_id": str(actor.tenant_id), "role": actor.role}
@@ -133,9 +190,11 @@ async def import_preview(
     actor: Annotated[Actor, Depends(require_permission(Permission.CASE_EDIT))],
     file: Annotated[UploadFile, File()],
 ) -> ImportPreview:
+    if not settings.misa_import_enabled:
+        raise HTTPException(404, "MISA file import is disabled")
     del actor
     try:
-        return preview_import(await file.read(), file.filename or "upload.csv")
+        return preview_import(await read_upload_limited(file), file.filename or "upload.csv")
     except (UnicodeDecodeError, ValueError) as exc:
         raise HTTPException(422, str(exc)) from exc
 
@@ -146,8 +205,10 @@ async def import_commit(
     actor: Annotated[Actor, Depends(require_permission(Permission.CASE_EDIT))],
     file: Annotated[UploadFile, File()],
 ) -> ImportResult:
+    if not settings.misa_import_enabled:
+        raise HTTPException(404, "MISA file import is disabled")
     try:
-        preview = preview_import(await file.read(), file.filename or "upload.csv")
+        preview = preview_import(await read_upload_limited(file), file.filename or "upload.csv")
     except (UnicodeDecodeError, ValueError) as exc:
         raise HTTPException(422, str(exc)) from exc
     if preview.invalid:
@@ -168,7 +229,9 @@ async def upload_document(
     file: Annotated[UploadFile, File()],
     case_id: Annotated[UUID | None, Form()] = None,
 ) -> dict[str, str | bool]:
-    content = await file.read()
+    if not settings.document_upload_enabled:
+        raise HTTPException(404, "document upload is not available in this deployment profile")
+    content = await read_upload_limited(file)
     with tenant_session(actor.tenant_id) as session:
         try:
             stored = await quarantine_and_store(
@@ -177,8 +240,8 @@ async def upload_document(
                 content=content,
                 filename=file.filename or "upload",
                 content_type=file.content_type or "application/octet-stream",
-                scanner=development_scanner,
-                storage=development_storage,
+                scanner=malware_scanner,
+                storage=document_storage,
             )
         except ValueError as exc:
             raise HTTPException(422, str(exc)) from exc
@@ -315,6 +378,73 @@ async def case_detail(
         }
 
 
+@app.get("/api/v1/approvals")
+async def list_approvals(
+    actor: Annotated[Actor, Depends(require_permission(Permission.CASE_VIEW))],
+) -> list[dict[str, object]]:
+    """Return review-safe approval metadata without persisting email content."""
+    with tenant_session(actor.tenant_id) as session:
+        approvals = session.scalars(
+            select(Approval)
+            .where(Approval.tenant_id == actor.tenant_id)
+            .order_by(Approval.expires_at)
+            .limit(100)
+        ).all()
+        result: list[dict[str, object]] = []
+        for approval in approvals:
+            case = session.scalar(
+                select(PaymentCase).where(
+                    PaymentCase.tenant_id == actor.tenant_id,
+                    PaymentCase.id == approval.case_id,
+                )
+            )
+            invoice_row = session.execute(
+                select(Invoice, Customer)
+                .join(CaseInvoice, CaseInvoice.invoice_id == Invoice.id)
+                .join(Customer, Customer.id == Invoice.customer_id)
+                .where(
+                    CaseInvoice.tenant_id == actor.tenant_id,
+                    CaseInvoice.case_id == approval.case_id,
+                )
+                .order_by(Invoice.due_date)
+                .limit(1)
+            ).first()
+            active_blockers = session.scalar(
+                select(func.count(Blocker.id)).where(
+                    Blocker.tenant_id == actor.tenant_id,
+                    Blocker.case_id == approval.case_id,
+                    Blocker.active.is_(True),
+                )
+            ) or 0
+            evidence_count = session.scalar(
+                select(func.count(EvidenceSpan.id))
+                .join(CaseDocument, CaseDocument.document_id == EvidenceSpan.document_id)
+                .where(
+                    CaseDocument.tenant_id == actor.tenant_id,
+                    CaseDocument.case_id == approval.case_id,
+                )
+            ) or 0
+            invoice, customer = invoice_row if invoice_row else (None, None)
+            result.append(
+                {
+                    "id": str(approval.id),
+                    "status": approval.status,
+                    "expires_at": approval.expires_at.isoformat(),
+                    "case_id": str(approval.case_id),
+                    "case_status": case.status if case else "UNKNOWN",
+                    "case_version": case.version if case else 1,
+                    "invoice_number": invoice.invoice_number if invoice else "—",
+                    "customer": customer.name if customer else "Chưa xác định",
+                    "outstanding_minor": invoice.outstanding_minor if invoice else 0,
+                    "currency": invoice.currency if invoice else "VND",
+                    "due_date": invoice.due_date.isoformat() if invoice else None,
+                    "active_blockers": active_blockers,
+                    "evidence_count": evidence_count,
+                }
+            )
+        return result
+
+
 class ApprovalDecision(BaseModel):
     content: str
 
@@ -339,6 +469,47 @@ async def approve(
             raise HTTPException(404, str(exc)) from exc
         except (PermissionError, ValueError) as exc:
             raise HTTPException(409, str(exc)) from exc
+        return {"id": str(approval.id), "status": approval.status}
+
+
+class ApprovalRejection(BaseModel):
+    reason: str
+
+
+@app.post("/api/v1/approvals/{approval_id}/reject")
+async def reject_approval(
+    approval_id: UUID,
+    decision: ApprovalRejection,
+    actor: Annotated[Actor, Depends(require_permission(Permission.APPROVAL_SINGLE))],
+) -> dict[str, str]:
+    reason = decision.reason.strip()
+    if len(reason) < 3:
+        raise HTTPException(422, "rejection reason is required")
+    with tenant_session(actor.tenant_id) as session:
+        approval = session.scalar(
+            select(Approval).where(
+                Approval.tenant_id == actor.tenant_id,
+                Approval.id == approval_id,
+            )
+        )
+        if approval is None:
+            raise HTTPException(404, "approval not found")
+        if approval.status != "PENDING":
+            raise HTTPException(409, "approval is no longer pending")
+        approval.status = "REJECTED"
+        approval.decided_by = actor.user_id
+        session.add(
+            AuditEntry(
+                tenant_id=actor.tenant_id,
+                aggregate_id=approval.case_id,
+                actor_type="user",
+                actor_id=str(actor.user_id),
+                action="approval.rejected",
+                aggregate_type="payment_case",
+                correlation_id=f"approval-reject:{approval.id}",
+                payload={"approval_id": str(approval.id), "reason": reason[:500]},
+            )
+        )
         return {"id": str(approval.id), "status": approval.status}
 
 
@@ -395,7 +566,7 @@ async def bank_preview(
 ) -> BankPreview:
     del actor
     try:
-        return preview_bank_csv(await file.read())
+        return preview_bank_csv(await read_upload_limited(file))
     except UnicodeDecodeError as exc:
         raise HTTPException(422, "bank CSV must be UTF-8") from exc
 
@@ -405,7 +576,7 @@ async def bank_commit(
     actor: Annotated[Actor, Depends(require_permission(Permission.FINANCIAL_EDIT))],
     file: Annotated[UploadFile, File()],
 ) -> dict[str, int]:
-    preview = preview_bank_csv(await file.read())
+    preview = preview_bank_csv(await read_upload_limited(file))
     if preview.invalid:
         raise HTTPException(422, "commit requires zero invalid rows")
     with tenant_session(actor.tenant_id) as session:

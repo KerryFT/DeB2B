@@ -206,6 +206,7 @@ dependencies = [
     { name = "fastapi" },
     { name = "google-api-python-client" },
     { name = "google-auth-oauthlib" },
+    { name = "google-genai" },
     { name = "httpx" },
     { name = "openpyxl" },
     { name = "opentelemetry-api" },
@@ -245,7 +246,6 @@ documents = [
 ]
 llm = [
     { name = "anthropic" },
-    { name = "google-genai" },
     { name = "openai" },
 ]
 
@@ -257,6 +257,7 @@ requires-dist = [
     { name = "fastapi", specifier = ">=0.136,<0.137" },
     { name = "google-api-python-client", specifier = ">=2.179,<3" },
     { name = "google-auth-oauthlib", specifier = ">=1.2,<2" },
+    { name = "google-genai", specifier = ">=2.16,<3" },
     { name = "httpx", specifier = ">=0.28,<0.29" },
     { name = "openpyxl", specifier = ">=3.1,<4" },
     { name = "opentelemetry-api", specifier = ">=1.36,<2" },
@@ -294,7 +295,6 @@ documents = [
 ]
 llm = [
     { name = "anthropic", specifier = ">=0.120,<0.121" },
-    { name = "google-genai", specifier = ">=2.16,<2.17" },
     { name = "openai", specifier = ">=2.45,<2.46" },
 ]
 

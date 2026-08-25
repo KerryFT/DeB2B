@@ -1,18 +1,17 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { apiBase, apiHeaders } from "../lib/api";
 
-const api = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
-const headers = { "content-type": "application/json", "x-dev-user-id": "00000000-0000-0000-0000-000000000002", "x-dev-tenant-id": "00000000-0000-0000-0000-000000000001", "x-dev-role": "tenant_admin" };
 
 export default function AutomationPage() {
   const [policy, setPolicy] = useState<Record<string, unknown>>();
   const [message, setMessage] = useState("");
-  const load = useCallback(() => fetch(`${api}/api/v2/automation/policy`, { headers }).then(async response => { if (!response.ok) throw new Error(`API ${response.status}`); setPolicy(await response.json()); }).catch((reason: unknown) => setMessage(reason instanceof Error ? reason.message : "API unavailable")), []);
+  const load = useCallback(() => fetch(`${apiBase}/api/v2/automation/policy`, { headers: apiHeaders("tenant_admin", true), credentials: "include" }).then(async response => { if (!response.ok) throw new Error(`API ${response.status}`); setPolicy(await response.json()); }).catch((reason: unknown) => setMessage(reason instanceof Error ? reason.message : "API unavailable")), []);
   useEffect(() => { void load(); }, [load]);
   async function disable() {
     setMessage("Đang kích hoạt kill switch…");
-    const response = await fetch(`${api}/api/v2/automation/policy`, { method: "POST", headers, body: JSON.stringify({ mode: "disabled", kill_switch: true }) });
+    const response = await fetch(`${apiBase}/api/v2/automation/policy`, { method: "POST", headers: apiHeaders("tenant_admin", true), credentials: "include", body: JSON.stringify({ mode: "disabled", kill_switch: true }) });
     setMessage(response.ok ? "Automation đã disabled; kill switch đang bật." : `Không thể cập nhật: API ${response.status}`);
     if (response.ok) await load();
   }

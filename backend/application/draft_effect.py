@@ -14,6 +14,7 @@ async def create_approved_draft(
     idempotency_key: str,
     spec: DraftSpec,
     gmail: GmailPort,
+    event_topic: str = "gmail.draft.created.v1",
 ) -> DraftAction:
     if approval.status != "APPROVED":
         raise PermissionError("approved content is required")
@@ -38,7 +39,7 @@ async def create_approved_draft(
     session.add(
         OutboxEvent(
             tenant_id=approval.tenant_id,
-            topic="gmail.draft.created.v1",
+            topic=event_topic,
             payload={
                 "draft_action_id": str(action.id),
                 "external_draft_id": external_id,

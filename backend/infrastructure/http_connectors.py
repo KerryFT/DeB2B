@@ -93,13 +93,17 @@ class MicrosoftGraphMailAdapter:
     async def delta(self, *, delta_link: str | None) -> ConnectorPage[OutlookMessage]:
         token = await self.token_provider()
         url = delta_link or (
-            f"{self.GRAPH_ROOT}/users/{self.mailbox}/mailFolders/{self.folder_id}/messages/delta"
+            f"{self.GRAPH_ROOT}/{'me' if self.mailbox == 'me' else f'users/{self.mailbox}'}/"
+            f"mailFolders/{self.folder_id}/messages/delta"
         )
         if not url.startswith(self.GRAPH_ROOT):
             raise ValueError("untrusted Microsoft Graph delta link")
         response = await self.client.get(
             url,
-            headers={"authorization": f"Bearer {token}", "prefer": "odata.maxpagesize=100"},
+            headers={
+                "authorization": f"Bearer {token}",
+                "prefer": 'outlook.body-content-type="text", odata.maxpagesize=100',
+            },
             timeout=30,
         )
         _raise_connector_error(response)
@@ -123,8 +127,9 @@ class MicrosoftGraphMailAdapter:
             "ccRecipients": [{"emailAddress": {"address": item}} for item in spec.cc],
             "internetMessageHeaders": [{"name": "x-ar-idempotency-key", "value": idempotency_key}],
         }
+        mailbox_path = "me" if self.mailbox == "me" else f"users/{self.mailbox}"
         response = await self.client.post(
-            f"{self.GRAPH_ROOT}/users/{self.mailbox}/messages",
+            f"{self.GRAPH_ROOT}/{mailbox_path}/messages",
             json=payload,
             headers={"authorization": f"Bearer {token}"},
             timeout=30,

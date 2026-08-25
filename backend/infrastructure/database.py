@@ -19,6 +19,7 @@ SessionFactory = sessionmaker(bind=engine, expire_on_commit=False)
 @contextmanager
 def tenant_session(tenant_id: UUID) -> Generator[Session]:
     with SessionFactory.begin() as session:
+        session.execute(text("SET LOCAL ROLE ar_app"))
         session.execute(
             text("SELECT set_config('app.tenant_id', :tenant_id, true)"),
             {"tenant_id": str(tenant_id)},

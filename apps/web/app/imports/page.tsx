@@ -1,13 +1,12 @@
 "use client";
 
 import { FormEvent, useState } from "react";
+import { apiBase, apiHeaders } from "../lib/api";
 
 type Preview = {
   valid: Array<{ invoice_number: string; customer_name: string; amount: string }>;
   invalid: Array<{ row_number: number; errors: Array<{ msg?: string }> }>;
 };
-
-const API = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
 export default function Imports() {
   const [file, setFile] = useState<File>();
@@ -22,13 +21,10 @@ export default function Imports() {
     const body = new FormData();
     body.append("file", file);
     try {
-      const response = await fetch(`${API}/api/v1/imports/${action}`, {
+      const response = await fetch(`${apiBase}/api/v1/imports/${action}`, {
         method: "POST",
-        headers: {
-          "x-dev-user-id": "00000000-0000-0000-0000-000000000002",
-          "x-dev-tenant-id": "00000000-0000-0000-0000-000000000001",
-          "x-dev-role": "operator",
-        },
+        headers: apiHeaders("operator"),
+        credentials: "include",
         body,
       });
       const result = await response.json();
@@ -48,8 +44,9 @@ export default function Imports() {
 
   return (
     <>
-      <div className="eyebrow">Data intake</div>
-      <h1>Import CSV/XLSX</h1>
+      <div className="eyebrow">MISA fallback · no API entitlement required</div>
+      <h1>Import MISA CSV/XLSX</h1>
+      <p className="lede">Chỉ dùng dữ liệu synthetic hoặc đã ẩn danh trên bản portfolio public. Preview không ghi database; commit có chống trùng theo fingerprint.</p>
       <form className="card" onSubmit={(event) => submit(event, "preview")}>
         <label htmlFor="ar-file">File công nợ synthetic</label>
         <input id="ar-file" type="file" accept=".csv,.xlsx" onChange={(event) => {
